@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mandara — Inference GUI</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+/* ── Header ── */
+header {
+  background: #1a1f2e; border-bottom: 1px solid #2d3748;
+  padding: 14px 32px; display: flex; align-items: center; gap: 12px;
+}
+header h1 { font-size: 1.05rem; font-weight: 600; color: #90cdf4; }
+.badge { background: #2d3748; color: #68d391; font-size: 0.68rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+#status-dot { width: 8px; height: 8px; border-radius: 50%; background: #fc8181; margin-left: auto; box-shadow: 0 0 6px #fc8181; }
+#status-dot.ok { background: #68d391; box-shadow: 0 0 6px #68d391; }
+#status-label { font-size: 0.73rem; color: #718096; }
+
+/* ── Layout ── */
+main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
+.card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; padding: 22px; margin-bottom: 18px; }
+.card h2 { font-size: 0.75rem; color: #718096; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
+
+/* ── Drop zone ── */
+#drop-zone {
+  border: 2px dashed #4a5568; border-radius: 10px; padding: 40px 24px;
+  text-align: center; cursor: pointer; transition: border-color .2s, background .2s; position: relative;
+}
+#drop-zone.hover   { border-color: #63b3ed; background: #1e2d42; }
+#drop-zone.has-file { border-color: #68d391; background: #111e11; }
+#drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+#drop-icon  { font-size: 2rem; margin-bottom: 8px; }
+#drop-label { color: #a0aec0; font-size: 0.86rem; }
+#drop-label span { color: #63b3ed; text-decoration: underline; }
+#file-name  { margin-top: 8px; font-size: 0.8rem; color: #68d391; font-weight: 600; display: none; }
+
+/* ── Score row ── */
+.score-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.score-row label { font-size: 0.74rem; color: #718096; white-space: nowrap; }
+.score-row input[type=range] { flex: 1; accent-color: #63b3ed; }
+.score-val { background: #2d3748; border-radius: 5px; padding: 2px 9px; font-size: 0.8rem; min-width: 38px; text-align: center; }
+
+/* ── Run button ── */
+#run-btn {
+  display: block; width: 100%; margin-top: 16px; padding: 12px;
+  background: #2b6cb0; color: #fff; font-size: 0.95rem; font-weight: 600;
+  border: none; border-radius: 10px; cursor: pointer; transition: background .2s;
+}
+#run-btn:hover:not(:disabled) { background: #3182ce; }
+#run-btn:disabled { opacity: .45; cursor: not-allowed; }
+.spinner {
+  display: inline-block; width: 12px; height: 12px;
+  border: 2px solid rgba(255,255,255,.25); border-top-color: #fff;
+  border-radius: 50%; animation: spin .7s linear infinite;
+  vertical-align: middle; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Progress steps ── */
+#progress-panel { display: none; margin-top: 18px; }
+.steps { display: flex; flex-direction: column; gap: 0; }
+.step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid #1a1f2e;
+  opacity: .35; transition: opacity .3s;
+}
+.step.active { opacity: 1; }
+.step.done   { opacity: 1; }
+.step-icon {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-weight: 700; margin-top: 1px;
+  background: #2d3748; color: #718096;
+}
+.step.done   .step-icon { background: #1a3a1a; color: #68d391; }
+.step.active .step-icon { background: #1a2b3a; color: #63b3ed; }
+.step-body { flex: 1; }
+.step-label { font-size: 0.82rem; color: #a0aec0; line-height: 1.4; }
+.step.done   .step-label { color: #68d391; }
+.step.active .step-label { color: #e2e8f0; }
+.step-detail { font-size: 0.72rem; color: #4a5568; margin-top: 3px; }
+.step.active .step-detail { color: #718096; }
+/* Progress bar */
+.prog-bar { height: 4px; background: #2d3748; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.prog-fill { height: 100%; background: #63b3ed; border-radius: 2px; transition: width .3s; width: 0%; }
+
+/* ── Error ── */
+#error-box {
+  display: none; background: #2d1515; border: 1px solid #fc8181;
+  color: #fc8181; border-radius: 8px; padding: 10px 14px; margin-top: 14px; font-size: 0.8rem;
+}
+
+/* ── Canvas card ── */
+#canvas-card { display: none; }
+.view-row { display: flex; align-items: center; gap: 0; margin-bottom: 14px; }
+.view-toggle { display: flex; border: 1px solid #2d3748; border-radius: 7px; overflow: hidden; }
+.view-btn {
+  padding: 7px 16px; font-size: 0.78rem; font-weight: 600;
+  background: #0f1117; color: #718096; border: none; cursor: pointer; transition: background .15s, color .15s;
+}
+.view-btn + .view-btn { border-left: 1px solid #2d3748; }
+.view-btn.active { background: #2b4a70; color: #90cdf4; }
+.view-btn:hover:not(.active) { background: #1a2535; color: #a0aec0; }
+#dl-btn {
+  margin-left: auto; background: #2d3748; color: #a0aec0;
+  border: none; border-radius: 7px; padding: 7px 14px; font-size: 0.78rem; cursor: pointer;
+}
+#dl-btn:hover { background: #4a5568; color: #e2e8f0; }
+
+/* Canvas container — scrollable when zoomed */
+#canvas-container { overflow: auto; border-radius: 8px; border: 1px solid #1a2535; max-height: 540px; background: #0a0d14; }
+#overlay-canvas { display: block; cursor: crosshair; }
+
+/* ── Legend ── */
+#legend { display: none; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #2d3748; }
+.leg-item { display: flex; align-items: center; gap: 5px; font-size: 0.73rem; color: #a0aec0; }
+.leg-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* ── Zoom row ── */
+.zoom-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 12px;
+  padding-top: 12px; border-top: 1px solid #2d3748;
+}
+.zoom-label { font-size: 0.73rem; color: #718096; margin-right: 4px; }
+.zoom-btn {
+  background: #2d3748; color: #a0aec0; border: none;
+  border-radius: 6px; width: 28px; height: 28px; font-size: 1rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.zoom-btn:hover { background: #4a5568; color: #e2e8f0; }
+.zoom-btn:disabled { opacity: .3; cursor: not-allowed; }
+#zoom-level { font-size: 0.78rem; color: #90cdf4; min-width: 36px; text-align: center; font-weight: 600; }
+#zoom-fit {
+  background: none; border: 1px solid #4a5568; color: #718096;
+  border-radius: 6px; padding: 4px 10px; font-size: 0.73rem; cursor: pointer;
+}
+#zoom-fit:hover { border-color: #63b3ed; color: #90cdf4; }
+
+/* ── Tooltip ── */
+#tooltip {
+  display: none; position: fixed; background: #1a1f2e; border: 1px solid #4a5568;
+  color: #e2e8f0; font-size: 0.73rem; padding: 4px 10px; border-radius: 6px;
+  pointer-events: none; z-index: 100; white-space: nowrap;
+}
+
+/* ── Result meta ── */
+#result-meta { display: none; }
+.meta-row { display: flex; align-items: center; gap: 14px; background: #0f1117; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; flex-wrap: wrap; }
+.meta-item { font-size: 0.76rem; }
+.meta-item .key { color: #718096; }
+.meta-item .val { color: #90cdf4; font-weight: 600; margin-left: 4px; }
+.meta-item.saved .val  { color: #68d391; }
+.meta-item.count .val  { color: #f6ad55; }
+.meta-item.patches .val { color: #63b3ed; }
+#toggle-raw {
+  background: none; border: 1px solid #4a5568; color: #718096;
+  border-radius: 6px; padding: 4px 11px; font-size: 0.73rem; cursor: pointer; margin-bottom: 8px;
+}
+#toggle-raw:hover { border-color: #63b3ed; color: #90cdf4; }
+#pred-text {
+  display: none; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px;
+  padding: 12px; font-family: monospace; font-size: 0.7rem; color: #a0aec0;
+  max-height: 260px; overflow-y: auto; white-space: pre; line-height: 1.6;
+}
+
+/* ── History ── */
+#history-list { display: flex; flex-direction: column; gap: 6px; }
+.hist-item { display: flex; align-items: center; gap: 10px; background: #0f1117; border-radius: 7px; padding: 8px 12px; font-size: 0.76rem; }
+.hist-seq  { color: #4a5568; min-width: 30px; }
+.hist-fname { color: #90cdf4; flex: 1; word-break: break-all; }
+.hist-cnt  { color: #f6ad55; min-width: 55px; text-align: right; }
+#history-empty { color: #4a5568; font-size: 0.8rem; text-align: center; padding: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mandara</h1>
+  <span class="badge">8-class · patch &amp; stitch</span>
+  <div id="status-dot"></div>
+  <span id="status-label">checking…</span>
+</header>
+<div id="tooltip"></div>
+<main>
+
+<!-- ── Upload card ── -->
+<div class="card">
+  <h2>Upload Image</h2>
+  <div id="drop-zone">
+    <input type="file" id="file-input" accept="image/*">
+    <div id="drop-icon">🛰️</div>
+    <div id="drop-label">Drop a satellite image here or <span>browse</span></div>
+    <div id="file-name"></div>
+  </div>
+  <div class="score-row">
+    <label>Score threshold</label>
+    <input type="range" id="score-slider" min="0" max="1" step="0.01" value="0.3">
+    <span class="score-val" id="score-val">0.30</span>
+  </div>
+  <button id="run-btn" disabled>Run Inference</button>
+
+  <!-- Progress steps -->
+  <div id="progress-panel">
+    <div class="steps">
+      <div class="step" id="step-upload">
+        <div class="step-icon" id="si-upload">1</div>
+        <div class="step-body">
+          <div class="step-label">Image received</div>
+        </div>
+      </div>
+      <div class="step" id="step-patch">
+        <div class="step-icon" id="si-patch">2</div>
+        <div class="step-body">
+          <div class="step-label" id="sl-patch">Splitting into patches…</div>
+          <div class="step-detail" id="sd-patch"></div>
+        </div>
+      </div>
+      <div class="step" id="step-infer">
+        <div class="step-icon" id="si-infer">3</div>
+        <div class="step-body">
+          <div class="step-label" id="sl-infer">Running model inference…</div>
+          <div class="step-detail" id="sd-infer"></div>
+          <div class="prog-bar" id="pb-wrap" style="display:none">
+            <div class="prog-fill" id="prog-fill"></div>
+          </div>
+        </div>
+      </div>
+      <div class="step" id="step-stitch">
+        <div class="step-icon" id="si-stitch">4</div>
+        <div class="step-body">
+          <div class="step-label" id="sl-stitch">Stitching predictions to full image…</div>
+        </div>
+      </div>
+      <div class="step" id="step-done">
+        <div class="step-icon" id="si-done">5</div>
+        <div class="step-body">
+          <div class="step-label" id="sl-done">Complete</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="error-box"></div>
+</div>
+
+<!-- ── Canvas card ── -->
+<div class="card" id="canvas-card">
+  <div class="view-row">
+    <div class="view-toggle">
+      <button class="view-btn active" id="view-overlay">Overlay</button>
+      <button class="view-btn"        id="view-original">Original</button>
+    </div>
+    <button id="dl-btn" title="Download annotated image">↓ PNG</button>
+  </div>
+  <div id="canvas-container">
+    <canvas id="overlay-canvas"></canvas>
+  </div>
+  <div id="legend"></div>
+  <div class="zoom-row">
+    <span class="zoom-label">Zoom</span>
+    <button class="zoom-btn" id="zoom-out" title="Zoom out">−</button>
+    <span id="zoom-level">1×</span>
+    <button class="zoom-btn" id="zoom-in"  title="Zoom in">+</button>
+    <button id="zoom-fit">Fit</button>
+  </div>
+</div>
+
+<!-- ── Result meta ── -->
+<div id="result-meta">
+  <div class="meta-row">
+    <div class="meta-item saved">  <span class="key">Saved as</span>   <span class="val" id="r-filename">—</span></div>
+    <div class="meta-item count">  <span class="key">Detections</span> <span class="val" id="r-count">—</span></div>
+    <div class="meta-item patches"><span class="key">Patches</span>    <span class="val" id="r-patches">—</span></div>
+    <div class="meta-item">        <span class="key">Threshold</span>  <span class="val" id="r-thr">—</span></div>
+  </div>
+  <button id="toggle-raw">Show raw predictions</button>
+  <div id="pred-text"></div>
+</div>
+
+<!-- ── History ── -->
+<div class="card">
+  <h2>History</h2>
+  <div id="history-list"><div id="history-empty">No predictions yet.</div></div>
+</div>
+
+</main>
+<script>
+// ── DOM ─────────────────────────────────────────────────────────────────────
+const dropZone      = document.getElementById('drop-zone');
+const fileInput     = document.getElementById('file-input');
+const fileNameEl    = document.getElementById('file-name');
+const scoreSlider   = document.getElementById('score-slider');
+const scoreValEl    = document.getElementById('score-val');
+const runBtn        = document.getElementById('run-btn');
+const progressPanel = document.getElementById('progress-panel');
+const errorBox      = document.getElementById('error-box');
+const canvasCard    = document.getElementById('canvas-card');
+const canvasContainer = document.getElementById('canvas-container');
+const canvas        = document.getElementById('overlay-canvas');
+const legendEl      = document.getElementById('legend');
+const dlBtn         = document.getElementById('dl-btn');
+const resultMeta    = document.getElementById('result-meta');
+const predTextEl    = document.getElementById('pred-text');
+const rFilename     = document.getElementById('r-filename');
+const rCount        = document.getElementById('r-count');
+const rPatches      = document.getElementById('r-patches');
+const rThr          = document.getElementById('r-thr');
+const statusDot     = document.getElementById('status-dot');
+const statusLbl     = document.getElementById('status-label');
+const historyList   = document.getElementById('history-list');
+const histEmpty     = document.getElementById('history-empty');
+const tooltip       = document.getElementById('tooltip');
+
+// ── Class colours ────────────────────────────────────────────────────────────
+const CLASS_COLOR = {
+  arty:         '#ff4d4d',
+  camo:         '#44dd88',
+  logistic:     '#4d9fff',
+  missile:      '#dd44ff',
+  radar:        '#22dddd',
+  smallvehicle: '#ffaa00',
+  tank:         '#f5e642',
+  vehicle:      '#ff8855',
+};
+function colorFor(cls) { return CLASS_COLOR[cls] || '#ffffff'; }
+
+// ── State ────────────────────────────────────────────────────────────────────
+let selectedFile  = null;
+let loadedImage   = null;
+let lastPreds     = [];
+let currentView   = 'overlay';   // 'overlay' | 'original'
+const ZOOM_STEPS  = [0.5, 0.75, 1, 1.5, 2, 3, 4];
+let zoomIdx       = 2;           // 1× = fit
+let canvasScale   = 1;           // actual draw scale (fitScale * zoomMultiplier)
+
+// ── Health ───────────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const j = await fetch('/health').then(r => r.json());
+    if (j.model_ready) { statusDot.classList.add('ok'); statusLbl.textContent = 'Model ready'; }
+    else { statusLbl.textContent = 'Model loading…'; setTimeout(checkHealth, 3000); }
+  } catch { statusLbl.textContent = 'Server unreachable'; setTimeout(checkHealth, 5000); }
+}
+checkHealth();
+
+// ── Slider ───────────────────────────────────────────────────────────────────
+scoreSlider.addEventListener('input', () => {
+  scoreValEl.textContent = parseFloat(scoreSlider.value).toFixed(2);
+});
+
+// ── Drop zone ─────────────────────────────────────────────────────────────────
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('hover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('hover');
+  if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+function setFile(f) {
+  selectedFile = f;
+  lastPreds = [];
+  fileNameEl.textContent  = f.name;
+  fileNameEl.style.display = 'block';
+  dropZone.classList.add('has-file');
+  errorBox.style.display = 'none';
+  runBtn.disabled = false;
+}
+
+// ── Progress helpers ──────────────────────────────────────────────────────────
+function stepState(id, state) { // 'pending' | 'active' | 'done'
+  const el = document.getElementById('step-' + id);
+  const ic = document.getElementById('si-' + id);
+  el.classList.remove('active', 'done');
+  if (state === 'active') el.classList.add('active');
+  if (state === 'done')   el.classList.add('done');
+  if (state === 'done')   ic.textContent = '✓';
+}
+function stepLabel(id, txt) { document.getElementById('sl-' + id).textContent = txt; }
+function stepDetail(id, txt) {
+  const el = document.getElementById('sd-' + id);
+  if (el) el.textContent = txt;
+}
+function resetSteps() {
+  ['upload','patch','infer','stitch','done'].forEach(id => stepState(id, 'pending'));
+  document.getElementById('prog-fill').style.width = '0%';
+  document.getElementById('pb-wrap').style.display = 'none';
+  stepLabel('patch', 'Splitting into patches…');
+  stepLabel('infer', 'Running model inference…');
+  stepLabel('stitch','Stitching predictions to full image…');
+  stepLabel('done',  'Complete');
+  stepDetail('patch', '');
+  stepDetail('infer', '');
+}
+
+// ── Canvas rendering ──────────────────────────────────────────────────────────
+function drawCanvas(preds, view) {
+  if (!loadedImage) return;
+  const img   = loadedImage;
+  const cW    = canvasContainer.clientWidth  || 900;
+  const cH    = 540;
+  const fitW  = cW  / img.naturalWidth;
+  const fitH  = cH  / img.naturalHeight;
+  const fit   = Math.min(fitW, fitH, 1);
+  const zoom  = ZOOM_STEPS[zoomIdx];
+  const raw   = fit * zoom;
+  const maxS  = 8192 / Math.max(img.naturalWidth, img.naturalHeight);
+  canvasScale = Math.min(raw, maxS);
+
+  canvas.width  = Math.round(img.naturalWidth  * canvasScale);
+  canvas.height = Math.round(img.naturalHeight * canvasScale);
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  if (view === 'overlay' && preds.length > 0) {
+    const lw = Math.max(1, 1.5 * canvasScale);
+    for (const p of preds) {
+      const col = colorFor(p.cls);
+      const pts = p.pts.map(([x, y]) => [x * canvasScale, y * canvasScale]);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      ctx.fillStyle   = col + '28';
+      ctx.fill();
+      ctx.strokeStyle = col;
+      ctx.lineWidth   = lw;
+      ctx.stroke();
+    }
+  }
+  document.getElementById('zoom-level').textContent = zoom + '×';
+  document.getElementById('zoom-out').disabled = (zoomIdx === 0);
+  document.getElementById('zoom-in').disabled  = (zoomIdx === ZOOM_STEPS.length - 1);
+}
+
+// ── Parse DOTA text ───────────────────────────────────────────────────────────
+const SHOW_CLASSES = new Set(['vehicle', 'smallvehicle']);
+
+function parsePreds(text) {
+  return text.split('\n').filter(l => l.trim()).map(line => {
+    const p = line.trim().split(/\s+/);
+    return {
+      pts: [[+p[0],+p[1]],[+p[2],+p[3]],[+p[4],+p[5]],[+p[6],+p[7]]],
+      cls:   p[8] || 'unknown',
+      score: parseFloat(p[9] || 0),
+    };
+  }).filter(d => SHOW_CLASSES.has(d.cls));
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+function buildLegend(preds) {
+  const seen = [...new Set(preds.map(p => p.cls))].sort();
+  legendEl.innerHTML = seen.map(cls =>
+    `<div class="leg-item"><div class="leg-swatch" style="background:${colorFor(cls)}"></div><span>${cls}</span></div>`
+  ).join('');
+  legendEl.style.display = seen.length ? 'flex' : 'none';
+}
+
+// ── View toggle ───────────────────────────────────────────────────────────────
+document.getElementById('view-overlay').addEventListener('click', () => {
+  currentView = 'overlay';
+  document.getElementById('view-overlay').classList.add('active');
+  document.getElementById('view-original').classList.remove('active');
+  drawCanvas(lastPreds, 'overlay');
+});
+document.getElementById('view-original').addEventListener('click', () => {
+  currentView = 'original';
+  document.getElementById('view-original').classList.add('active');
+  document.getElementById('view-overlay').classList.remove('active');
+  drawCanvas(lastPreds, 'original');
+});
+
+// ── Zoom controls ─────────────────────────────────────────────────────────────
+document.getElementById('zoom-in').addEventListener('click', () => {
+  if (zoomIdx < ZOOM_STEPS.length - 1) { zoomIdx++; drawCanvas(lastPreds, currentView); }
+});
+document.getElementById('zoom-out').addEventListener('click', () => {
+  if (zoomIdx > 0) { zoomIdx--; drawCanvas(lastPreds, currentView); }
+});
+document.getElementById('zoom-fit').addEventListener('click', () => {
+  zoomIdx = 2; drawCanvas(lastPreds, currentView);  // index 2 = 1× = fit
+});
+
+// ── Download ──────────────────────────────────────────────────────────────────
+dlBtn.addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'overlay_' + (selectedFile ? selectedFile.name : 'result.png');
+  a.click();
+});
+
+// ── Raw text toggle ───────────────────────────────────────────────────────────
+document.getElementById('toggle-raw').addEventListener('click', () => {
+  const open = predTextEl.style.display === 'block';
+  predTextEl.style.display = open ? 'none' : 'block';
+  document.getElementById('toggle-raw').textContent = open ? 'Show raw predictions' : 'Hide raw predictions';
+});
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  if (!lastPreds.length || currentView !== 'overlay') return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (canvas.width  / rect.width);
+  const my = (e.clientY - rect.top)  * (canvas.height / rect.height);
+  const hit = [...lastPreds].reverse().find(p => {
+    const pts = p.pts.map(([x, y]) => [x * canvasScale, y * canvasScale]);
+    return pointInPoly(mx, my, pts);
+  });
+  if (hit) {
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 12) + 'px';
+    tooltip.style.top  = (e.clientY - 8)  + 'px';
+    tooltip.textContent = `${hit.cls}  ${(hit.score * 100).toFixed(1)}%`;
+  } else tooltip.style.display = 'none';
+});
+canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+function pointInPoly(px, py, pts) {
+  let inside = false;
+  for (let i = 0, j = 3; i < 4; j = i++) {
+    const xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+      inside = !inside;
+  }
+  return inside;
+}
+
+// ── Run inference (SSE stream) ────────────────────────────────────────────────
+runBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+
+  // Reset UI
+  runBtn.disabled = true;
+  runBtn.innerHTML = '<span class="spinner"></span>Processing…';
+  errorBox.style.display = 'none';
+  canvasCard.style.display = 'none';
+  resultMeta.style.display = 'none';
+  progressPanel.style.display = 'block';
+  resetSteps();
+
+  stepState('upload', 'done');
+  stepState('patch',  'active');
+
+  const fd = new FormData();
+  fd.append('image',     selectedFile);
+  fd.append('score_thr', scoreSlider.value);
+  fd.append('out_dir',   '/sfs/inference_endpoint/pred');
+
+  let finalResult = null;
+
+  try {
+    const resp = await fetch('/predict/patched/stream', { method: 'POST', body: fd });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        for (const line of part.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          handleSSE(ev);
+          if (ev.type === 'done') finalResult = ev;
+        }
+      }
+    }
+  } catch (err) {
+    errorBox.textContent  = err.message;
+    errorBox.style.display = 'block';
+    runBtn.innerHTML = 'Run Inference';
+    runBtn.disabled  = false;
+    return;
+  }
+
+  if (!finalResult) {
+    errorBox.textContent  = 'Stream ended without a result.';
+    errorBox.style.display = 'block';
+    runBtn.innerHTML = 'Run Inference';
+    runBtn.disabled  = false;
+    return;
+  }
+
+  // Render results
+  lastPreds   = parsePreds(finalResult.predictions);
+  currentView = 'overlay';
+  zoomIdx     = 2;
+  document.getElementById('view-overlay').classList.add('active');
+  document.getElementById('view-original').classList.remove('active');
+
+  const reader2 = new FileReader();
+  reader2.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      loadedImage = img;
+      canvasCard.style.display = 'block';
+      drawCanvas(lastPreds, 'overlay');
+      buildLegend(lastPreds);
+    };
+    img.src = ev.target.result;
+  };
+  reader2.readAsDataURL(selectedFile);
+
+  rFilename.textContent = finalResult.filename;
+  rCount.textContent    = finalResult.detections;
+  rPatches.textContent  = finalResult.n_patches;
+  rThr.textContent      = parseFloat(scoreSlider.value).toFixed(2);
+  resultMeta.style.display = 'block';
+
+  predTextEl.innerHTML = lastPreds.length === 0
+    ? 'No detections above threshold.'
+    : lastPreds.map(p => {
+        const c = p.pts.flat().map(v => v.toFixed(1)).join('  ');
+        const col = colorFor(p.cls);
+        return `<span style="color:#4a5568">${c}</span>  ` +
+               `<span style="color:${col};font-weight:600">${p.cls}</span>  ` +
+               `<span style="color:#68d391">${p.score.toFixed(4)}</span>`;
+      }).join('\n');
+
+  addHistory(finalResult);
+  runBtn.innerHTML = 'Run Inference';
+  runBtn.disabled  = false;
+});
+
+// ── SSE event handler ─────────────────────────────────────────────────────────
+function handleSSE(ev) {
+  switch (ev.type) {
+    case 'patch_start':
+      stepState('patch', 'done');
+      stepDetail('patch', `${ev.n_patches} tiles · ${ev.patch_w}×${ev.patch_h} px · ${ev.overlap} px overlap`);
+      stepLabel('patch', `Split into ${ev.n_patches} patches`);
+      stepState('infer', 'active');
+      document.getElementById('pb-wrap').style.display = 'block';
+      break;
+
+    case 'tile_done': {
+      const pct = Math.round(ev.tile / ev.total * 100);
+      stepLabel('infer',  `Running model inference on patches`);
+      stepDetail('infer', `${ev.tile} / ${ev.total}  ·  ${pct}%`);
+      document.getElementById('prog-fill').style.width = pct + '%';
+      break;
+    }
+    case 'stitching':
+      stepState('infer',  'done');
+      stepLabel('infer',  'Model inference complete');
+      stepState('stitch', 'active');
+      break;
+
+    case 'done':
+      stepState('stitch', 'done');
+      stepState('done',   'done');
+      stepLabel('done', `Complete — ${ev.detections} detection${ev.detections !== 1 ? 's' : ''}`);
+      break;
+
+    case 'error':
+      errorBox.textContent  = 'Backend error: ' + ev.message;
+      errorBox.style.display = 'block';
+      break;
+  }
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+let histSeq = 0;
+function addHistory(j) {
+  histEmpty.style.display = 'none';
+  histSeq++;
+  const item = document.createElement('div');
+  item.className = 'hist-item';
+  item.innerHTML = `
+    <span class="hist-seq">#${String(histSeq).padStart(3,'0')}</span>
+    <span class="hist-fname">${j.filename}</span>
+    <span class="hist-cnt">${j.detections} det</span>`;
+  historyList.insertBefore(item, histEmpty);
+}
+</script>
+</body>
+</html>

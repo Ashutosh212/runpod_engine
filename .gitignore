@@ -1,0 +1,19 @@
+# Model checkpoints (too large for GitHub)
+checkpoints/
+
+# Saved predictions
+pred/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Temp files
+*.tmp
+*.log
+
+# Environment
+.env
