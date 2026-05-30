@@ -1,12 +1,14 @@
 """FastAPI inference server for OrientedFormer 8-class detector.
 
 Endpoints:
-  GET  /                — browser GUI
-  GET  /health          — liveness check + model status
-  POST /predict         — single image upload → DOTA-format text
-  POST /predict/save    — upload + save to pred/ with sequential naming
-  POST /predict/patched — patch → infer each tile → stitch → save
-  POST /predict/batch   — process a server-side folder → save DOTA .txt files
+  GET  /                      — browser GUI
+  GET  /health                — liveness check + model status
+  GET  /samples               — list sample images available for demo
+  GET  /sample_data/{filename}— serve a sample image file
+  POST /predict               — single image upload → DOTA-format text
+  POST /predict/save          — upload + save to pred/ with sequential naming
+  POST /predict/patched       — patch → infer each tile → stitch → save
+  POST /predict/batch         — process a server-side folder → save DOTA .txt files
 """
 import glob
 import json
@@ -15,14 +17,39 @@ import re
 import tempfile
 
 from fastapi import FastAPI, File, Form, UploadFile, Query, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="OrientedFormer Inference API", version="1.0")
 
 _model_ready = False
 
-PRED_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pred")
+PRED_DIR   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pred")
+SAMPLE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_data")
+
+# ── Upload size limit ─────────────────────────────────────────────────────────
+# Derived from GSD ≈ 0.30 m/px, 3-band uint16 (worst case), 30 km² ceiling:
+#   30 km² × 11.2M px/km² × 3 bands × 2 bytes = ~2.0 GB
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
+MAX_UPLOAD_LABEL = "2 GB (≈ 30 km²)"
+
+_ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
+
+
+def _validate_upload(image: UploadFile, content: bytes) -> None:
+    """Raise HTTPException if the upload is too large or wrong format."""
+    ext = os.path.splitext(image.filename or "")[-1].lower()
+    if ext not in _ALLOWED_EXTS:
+        raise HTTPException(
+            400,
+            f"Unsupported format '{ext}'. Accepted: PNG, JPG, TIFF (3-band RGB)."
+        )
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            413,
+            f"File too large ({len(content) / 1e9:.2f} GB). "
+            f"Maximum allowed: {MAX_UPLOAD_LABEL}."
+        )
 
 
 def _next_seq(out_dir: str) -> int:
@@ -63,6 +90,28 @@ def health():
             "model_ready": _model_ready}
 
 
+@app.get("/samples")
+def list_samples():
+    """Return metadata for all sample images available for demo."""
+    if not os.path.isdir(SAMPLE_DIR):
+        return []
+    files = sorted(
+        f for f in os.listdir(SAMPLE_DIR)
+        if f.lower().endswith((".png", ".jpg", ".jpeg"))
+    )
+    return [{"filename": f, "url": f"/sample_data/{f}"} for f in files]
+
+
+@app.get("/sample_data/{filename}")
+def serve_sample(filename: str):
+    """Serve a sample image file by name."""
+    safe = os.path.basename(filename)
+    path = os.path.join(SAMPLE_DIR, safe)
+    if not os.path.isfile(path):
+        raise HTTPException(404, f"Sample not found: {safe}")
+    return FileResponse(path, media_type="image/png")
+
+
 @app.post("/predict", response_class=PlainTextResponse)
 async def predict(
     image: UploadFile = File(...),
@@ -71,14 +120,19 @@ async def predict(
     if not _model_ready:
         raise HTTPException(503, "Model not loaded yet")
 
+    content = await image.read()
+    _validate_upload(image, content)
+
     suffix = os.path.splitext(image.filename)[-1] or ".png"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(await image.read())
+        tmp.write(content)
         tmp_path = tmp.name
 
     try:
         from inference import predict_image
         result = predict_image(tmp_path, score_thr=score_thr)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     finally:
         os.unlink(tmp_path)
 
@@ -101,18 +155,23 @@ async def predict_save(
 
     os.makedirs(out_dir, exist_ok=True)
 
+    content = await image.read()
+    _validate_upload(image, content)
+
     suffix = os.path.splitext(image.filename)[-1] or ".png"
     stem = os.path.splitext(image.filename)[0] if image.filename else "image"
     # strip unsafe path chars from the original stem
     stem = re.sub(r"[^\w\-]", "_", stem)
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(await image.read())
+        tmp.write(content)
         tmp_path = tmp.name
 
     try:
         from inference import predict_image
         result = predict_image(tmp_path, score_thr=score_thr)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     finally:
         os.unlink(tmp_path)
 
@@ -146,16 +205,21 @@ async def predict_patched(
 
     os.makedirs(out_dir, exist_ok=True)
 
+    content = await image.read()
+    _validate_upload(image, content)
+
     suffix = os.path.splitext(image.filename)[-1] or ".png"
     stem   = re.sub(r"[^\w\-]", "_", os.path.splitext(image.filename)[0] if image.filename else "image")
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(await image.read())
+        tmp.write(content)
         tmp_path = tmp.name
 
     try:
         from patcher import patch_and_predict, PATCH_W, PATCH_H
         stitched, origins, (img_w, img_h) = patch_and_predict(tmp_path, score_thr=score_thr)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     finally:
         os.unlink(tmp_path)
 
@@ -194,6 +258,8 @@ async def predict_patched_stream(
         raise HTTPException(503, "Model not loaded yet")
 
     content = await image.read()
+    _validate_upload(image, content)
+
     suffix  = os.path.splitext(image.filename)[-1] or ".png"
     stem    = re.sub(r"[^\w\-]", "_",
                      os.path.splitext(image.filename)[0] if image.filename else "image")

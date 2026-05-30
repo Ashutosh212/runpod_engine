@@ -14,7 +14,6 @@ header {
   padding: 14px 32px; display: flex; align-items: center; gap: 12px;
 }
 header h1 { font-size: 1.05rem; font-weight: 600; color: #90cdf4; }
-.badge { background: #2d3748; color: #68d391; font-size: 0.68rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
 #status-dot { width: 8px; height: 8px; border-radius: 50%; background: #fc8181; margin-left: auto; box-shadow: 0 0 6px #fc8181; }
 #status-dot.ok { background: #68d391; box-shadow: 0 0 6px #68d391; }
 #status-label { font-size: 0.73rem; color: #718096; }
@@ -158,7 +157,7 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
 .meta-item.patches .val { color: #63b3ed; }
 #toggle-raw {
   background: none; border: 1px solid #4a5568; color: #718096;
-  border-radius: 6px; padding: 4px 11px; font-size: 0.73rem; cursor: pointer; margin-bottom: 8px;
+  border-radius: 6px; padding: 4px 11px; font-size: 0.73rem; cursor: pointer;
 }
 #toggle-raw:hover { border-color: #63b3ed; color: #90cdf4; }
 #pred-text {
@@ -166,6 +165,38 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
   padding: 12px; font-family: monospace; font-size: 0.7rem; color: #a0aec0;
   max-height: 260px; overflow-y: auto; white-space: pre; line-height: 1.6;
 }
+
+/* ── Sample tiles ── */
+.sample-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 560px) { .sample-grid { grid-template-columns: 1fr; } }
+.sample-tile {
+  background: #0f1117; border: 1px solid #2d3748; border-radius: 8px;
+  padding: 14px 10px; text-align: center; cursor: pointer;
+  transition: border-color .2s, background .2s;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.sample-tile:hover { border-color: #63b3ed; background: #111e2e; }
+.sample-tile .s-icon  { font-size: 1.8rem; line-height: 1; }
+.sample-tile .s-label { font-size: 0.82rem; font-weight: 600; color: #e2e8f0; }
+.sample-tile .s-fname {
+  font-size: 0.62rem; color: #4a5568; line-height: 1.4;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sample-load-btn {
+  background: #2b6cb0; color: #fff; border: none; border-radius: 5px;
+  padding: 5px 14px; font-size: 0.75rem; cursor: pointer; margin-top: 4px;
+  transition: background .15s; pointer-events: none;
+}
+.sample-tile:hover .sample-load-btn { background: #3182ce; }
+
+/* ── Download txt ── */
+#dl-txt-btn {
+  background: none; border: 1px solid #4a5568; color: #718096;
+  border-radius: 6px; padding: 4px 11px; font-size: 0.73rem; cursor: pointer;
+}
+#dl-txt-btn:hover:not(:disabled) { border-color: #68d391; color: #68d391; }
+#dl-txt-btn:disabled { opacity: .35; cursor: not-allowed; }
+.action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 
 /* ── History ── */
 #history-list { display: flex; flex-direction: column; gap: 6px; }
@@ -179,18 +210,51 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
 <body>
 <header>
   <h1>Mandara</h1>
-  <span class="badge">8-class · patch &amp; stitch</span>
   <div id="status-dot"></div>
   <span id="status-label">checking…</span>
 </header>
 <div id="tooltip"></div>
 <main>
 
+<!-- ── Features info card ── -->
+<div class="card" style="border-left:3px solid #4299e1">
+  <h2 style="margin-bottom:10px">About this tool</h2>
+  <p style="font-size:0.82rem;color:#a0aec0;line-height:1.7;margin:0">
+    Upload any <strong style="color:#e2e8f0">3-band RGB satellite image</strong> to detect vehicles using an oriented bounding box model.<br>
+    After inference, download the raw prediction file in <strong style="color:#e2e8f0">DOTA format</strong> — compatible with standard accuracy evaluation pipelines.
+  </p>
+  <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px">
+    <div style="font-size:0.78rem;color:#718096">
+      <span style="color:#68d391;margin-right:6px">✓</span><strong style="color:#cbd5e0">Formats</strong>&nbsp;&nbsp;PNG · JPG · TIFF <span style="color:#4a5568">(3-band RGB only)</span>
+    </div>
+    <div style="font-size:0.78rem;color:#718096">
+      <span style="color:#68d391;margin-right:6px">✓</span><strong style="color:#cbd5e0">Max size</strong>&nbsp;&nbsp;2 GB &nbsp;<span style="color:#4a5568">(≈ 30 km² at 0.3 m/px)</span>
+    </div>
+    <div style="font-size:0.78rem;color:#718096">
+      <span style="color:#68d391;margin-right:6px">✓</span><strong style="color:#cbd5e0">Large images</strong>&nbsp;&nbsp;auto-tiled into 1280×720 patches
+    </div>
+    <div style="font-size:0.78rem;color:#718096">
+      <span style="color:#68d391;margin-right:6px">✓</span><strong style="color:#cbd5e0">Output</strong>&nbsp;&nbsp;DOTA .txt — use directly for mAP / accuracy evaluation
+    </div>
+  </div>
+</div>
+
+<!-- ── Sample images card ── -->
+<div class="card">
+  <h2>Try a Sample</h2>
+  <p style="font-size:0.8rem;color:#718096;margin-bottom:14px">
+    Don't have an image? Click any sample below to load it instantly.
+  </p>
+  <div class="sample-grid" id="sample-grid">
+    <span style="color:#4a5568;font-size:0.8rem">Loading samples…</span>
+  </div>
+</div>
+
 <!-- ── Upload card ── -->
 <div class="card">
   <h2>Upload Image</h2>
   <div id="drop-zone">
-    <input type="file" id="file-input" accept="image/*">
+    <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.tif,.tiff,image/png,image/jpeg,image/tiff">
     <div id="drop-icon">🛰️</div>
     <div id="drop-label">Drop a satellite image here or <span>browse</span></div>
     <div id="file-name"></div>
@@ -276,7 +340,10 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
     <div class="meta-item patches"><span class="key">Patches</span>    <span class="val" id="r-patches">—</span></div>
     <div class="meta-item">        <span class="key">Threshold</span>  <span class="val" id="r-thr">—</span></div>
   </div>
-  <button id="toggle-raw">Show raw predictions</button>
+  <div class="action-row">
+    <button id="toggle-raw">Show raw predictions</button>
+    <button id="dl-txt-btn" disabled>⬇ Download .txt</button>
+  </div>
   <div id="pred-text"></div>
 </div>
 
@@ -313,6 +380,7 @@ const statusLbl     = document.getElementById('status-label');
 const historyList   = document.getElementById('history-list');
 const histEmpty     = document.getElementById('history-empty');
 const tooltip       = document.getElementById('tooltip');
+const dlTxtBtn      = document.getElementById('dl-txt-btn');
 
 // ── Class colours ────────────────────────────────────────────────────────────
 const CLASS_COLOR = {
@@ -331,6 +399,7 @@ function colorFor(cls) { return CLASS_COLOR[cls] || '#ffffff'; }
 let selectedFile  = null;
 let loadedImage   = null;
 let lastPreds     = [];
+let lastResult    = null;
 let currentView   = 'overlay';   // 'overlay' | 'original'
 const ZOOM_STEPS  = [0.5, 0.75, 1, 1.5, 2, 3, 4];
 let zoomIdx       = 2;           // 1× = fit
@@ -360,14 +429,37 @@ dropZone.addEventListener('drop', e => {
 });
 fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
 
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB — matches server limit
+const ALLOWED_EXTS    = new Set(['.png', '.jpg', '.jpeg', '.tif', '.tiff']);
+
 function setFile(f) {
+  // Format check
+  const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+  if (!ALLOWED_EXTS.has(ext)) {
+    showError(`Unsupported format "${ext}". Please upload a PNG, JPG, or TIFF (3-band RGB).`);
+    return;
+  }
+  // Size check
+  if (f.size > MAX_UPLOAD_BYTES) {
+    const gb = (f.size / 1e9).toFixed(2);
+    showError(`File too large (${gb} GB). Maximum allowed is 2 GB (≈ 30 km² at 0.3 m/px).`);
+    return;
+  }
+
   selectedFile = f;
   lastPreds = [];
-  fileNameEl.textContent  = f.name;
+  const sizeMB = (f.size / 1e6).toFixed(1);
+  fileNameEl.textContent  = `${f.name}  (${sizeMB} MB)`;
   fileNameEl.style.display = 'block';
   dropZone.classList.add('has-file');
   errorBox.style.display = 'none';
   runBtn.disabled = false;
+}
+
+function showError(msg) {
+  errorBox.textContent    = msg;
+  errorBox.style.display  = 'block';
+  runBtn.disabled         = true;
 }
 
 // ── Progress helpers ──────────────────────────────────────────────────────────
@@ -437,18 +529,29 @@ function drawCanvas(preds, view) {
   document.getElementById('zoom-in').disabled  = (zoomIdx === ZOOM_STEPS.length - 1);
 }
 
-// ── Parse DOTA text ───────────────────────────────────────────────────────────
+// ── Parse, filter & calibrate predictions ────────────────────────────────────
+// Only vehicle / smallvehicle classes are surfaced to users.
+// Scores are calibrated using gamma (power) scaling: calibrated = raw ^ GAMMA.
+// This lifts low raw scores into a readable range without ever clipping strong
+// detections to 1.0 — only a raw score of exactly 1.0 maps to 100%.
 const SHOW_CLASSES = new Set(['vehicle', 'smallvehicle']);
+const SCORE_GAMMA  = 0.4;   // tune lower (e.g. 0.3) to lift scores more aggressively
 
-function parsePreds(text) {
-  return text.split('\n').filter(l => l.trim()).map(line => {
+function parseCalibrated(text) {
+  // 1. Parse all lines, keep only vehicle/smallvehicle with raw score >= 0.1
+  const raw = text.split('\n').filter(l => l.trim()).map(line => {
     const p = line.trim().split(/\s+/);
     return {
-      pts: [[+p[0],+p[1]],[+p[2],+p[3]],[+p[4],+p[5]],[+p[6],+p[7]]],
-      cls:   p[8] || 'unknown',
+      pts:   [[+p[0],+p[1]],[+p[2],+p[3]],[+p[4],+p[5]],[+p[6],+p[7]]],
+      cls:   p[8]  || 'unknown',
       score: parseFloat(p[9] || 0),
     };
-  }).filter(d => SHOW_CLASSES.has(d.cls));
+  }).filter(d => SHOW_CLASSES.has(d.cls) && d.score >= 0.1);
+
+  if (!raw.length) return [];
+
+  // 2. Gamma calibration: calibrated = raw ^ GAMMA, no clipping needed
+  return raw.map(d => ({ ...d, score: +Math.pow(d.score, SCORE_GAMMA).toFixed(4) }));
 }
 
 // ── Legend ────────────────────────────────────────────────────────────────────
@@ -547,8 +650,8 @@ runBtn.addEventListener('click', async () => {
 
   const fd = new FormData();
   fd.append('image',     selectedFile);
-  fd.append('score_thr', scoreSlider.value);
-  fd.append('out_dir',   '/sfs/inference_endpoint/pred');
+  fd.append('score_thr', Math.min(parseFloat(scoreSlider.value), 0.1).toFixed(3));
+  fd.append('out_dir',   '/workspace/runpod_engine/pred');
 
   let finalResult = null;
 
@@ -593,7 +696,13 @@ runBtn.addEventListener('click', async () => {
   }
 
   // Render results
-  lastPreds   = parsePreds(finalResult.predictions);
+  // Calibrate: vehicle/smallvehicle only, gamma power scaling (score ^ 0.4)
+  const allCalibrated = parseCalibrated(finalResult.predictions);
+  lastResult  = { ...finalResult, calibrated: allCalibrated };
+  dlTxtBtn.disabled = false;
+
+  const dispThr = parseFloat(scoreSlider.value);
+  lastPreds   = allCalibrated.filter(d => d.score >= dispThr);
   currentView = 'overlay';
   zoomIdx     = 2;
   document.getElementById('view-overlay').classList.add('active');
@@ -613,9 +722,9 @@ runBtn.addEventListener('click', async () => {
   reader2.readAsDataURL(selectedFile);
 
   rFilename.textContent = finalResult.filename;
-  rCount.textContent    = finalResult.detections;
+  rCount.textContent    = lastPreds.length;
   rPatches.textContent  = finalResult.n_patches;
-  rThr.textContent      = parseFloat(scoreSlider.value).toFixed(2);
+  rThr.textContent      = dispThr.toFixed(2);
   resultMeta.style.display = 'block';
 
   predTextEl.innerHTML = lastPreds.length === 0
@@ -628,7 +737,7 @@ runBtn.addEventListener('click', async () => {
                `<span style="color:#68d391">${p.score.toFixed(4)}</span>`;
       }).join('\n');
 
-  addHistory(finalResult);
+  addHistory({ ...finalResult, detections: lastPreds.length });
   runBtn.innerHTML = 'Run Inference';
   runBtn.disabled  = false;
 });
@@ -683,6 +792,64 @@ function addHistory(j) {
     <span class="hist-cnt">${j.detections} det</span>`;
   historyList.insertBefore(item, histEmpty);
 }
+
+// ── Sample images ─────────────────────────────────────────────────────────────
+async function fetchSamples() {
+  const grid = document.getElementById('sample-grid');
+  try {
+    const samples = await fetch('/samples').then(r => r.json());
+    if (!samples.length) {
+      grid.innerHTML = '<span style="color:#4a5568;font-size:0.8rem">No samples found.</span>';
+      return;
+    }
+    let sampleCount = 0;
+    grid.innerHTML = samples.map(s => {
+      const isDota = s.filename.toLowerCase().startsWith('dota');
+      const label  = isDota ? 'DOTA Sample' : `Sample ${++sampleCount}`;
+      return `
+      <div class="sample-tile" onclick="loadSample('${s.url}','${s.filename}')">
+        <div class="s-icon">🛰️</div>
+        <div class="s-label">${label}</div>
+        <div class="s-fname" title="${s.filename}">${s.filename}</div>
+        <div class="sample-load-btn">Load image</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    grid.innerHTML = '<span style="color:#4a5568;font-size:0.8rem">Could not load samples.</span>';
+  }
+}
+
+async function loadSample(url, filename) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const file = new File([blob], filename, { type: blob.type || 'image/png' });
+    setFile(file);
+    document.getElementById('drop-zone').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch(e) {
+    alert('Could not load sample image: ' + e.message);
+  }
+}
+
+fetchSamples();
+
+// ── Download predictions (.txt) ───────────────────────────────────────────────
+// Exports vehicle / smallvehicle only (all detections ≥ 0.1, calibrated scores).
+// Class labels other than vehicle/smallvehicle are never written to the file.
+dlTxtBtn.addEventListener('click', () => {
+  if (!lastResult || !lastResult.calibrated || !lastResult.calibrated.length) return;
+  const lines = lastResult.calibrated.map(d => {
+    const coords = d.pts.flat().map(v => v.toFixed(2)).join(' ');
+    return `${coords} ${d.cls} ${d.score.toFixed(4)}`;
+  });
+  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = lastResult.filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
 </script>
 </body>
 </html>

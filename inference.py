@@ -2,6 +2,7 @@
 import math
 import os
 import sys
+import tempfile
 import numpy as np
 
 # Ensure the orientedformer module is importable as projects.OrientedFormer.orientedformer
@@ -18,6 +19,8 @@ CHECKPOINT = os.path.join(_ROOT, "checkpoints/epoch_9.pth")
 
 CLASSES = ("arty", "camo", "logistic", "missile", "radar",
            "smallvehicle", "tank", "vehicle")
+
+_TIFF_EXTS = {".tif", ".tiff"}
 
 _model = None
 
@@ -43,12 +46,54 @@ def rbox_to_poly(cx, cy, w, h, angle):
     return pts
 
 
+def _prepare_image(image_path: str) -> tuple[str, str | None]:
+    """Validate and prepare image for inference.
+
+    For TIFF files:
+      - Checks the file has exactly 3 bands; raises ValueError otherwise.
+      - Converts to a temporary PNG so cv2 (used by mmdet) reads it reliably.
+
+    Returns:
+        (path_to_use, tmp_png_path)
+        tmp_png_path is non-None only when a temp file was created and must
+        be deleted by the caller after inference.
+    """
+    ext = os.path.splitext(image_path)[1].lower()
+    if ext not in _TIFF_EXTS:
+        return image_path, None
+
+    from PIL import Image as PILImage
+    pil_img = PILImage.open(image_path)
+    bands = len(pil_img.getbands())
+    if bands != 3:
+        raise ValueError(
+            f"TIFF must have exactly 3 bands (RGB). "
+            f"Got {bands} band(s). "
+            f"Please export your image as a 3-band RGB TIFF."
+        )
+
+    # cv2.imread does not reliably support TIFF — convert to PNG first
+    fd, tmp_png = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    pil_img.convert("RGB").save(tmp_png)
+    return tmp_png, tmp_png
+
+
 def predict_image(image_path: str, score_thr: float = 0.05) -> str:
     """Run inference on one image. Returns DOTA-format string."""
     from mmdet.apis import inference_detector
 
-    model = load_model()
-    result = inference_detector(model, image_path)
+    infer_path, tmp_png = _prepare_image(image_path)
+    try:
+        model = load_model()
+        result = inference_detector(model, infer_path)
+    finally:
+        if tmp_png:
+            try:
+                os.unlink(tmp_png)
+            except OSError:
+                pass
+
     pred = result.pred_instances
 
     bboxes = pred.bboxes.cpu().numpy()  # (N, 5): cx cy w h angle
@@ -70,12 +115,13 @@ def predict_image(image_path: str, score_thr: float = 0.05) -> str:
 
 
 def predict_batch(img_dir: str, out_dir: str, score_thr: float = 0.05):
-    """Run inference on all .png images in img_dir, save DOTA .txt to out_dir."""
+    """Run inference on all images in img_dir, save DOTA .txt to out_dir."""
     import glob
     os.makedirs(out_dir, exist_ok=True)
-    images = sorted(glob.glob(os.path.join(img_dir, "*.png")))
-    if not images:
-        images = sorted(glob.glob(os.path.join(img_dir, "*.jpg")))
+    exts = ("*.png", "*.jpg", "*.jpeg", "*.tif", "*.tiff")
+    images = []
+    for pattern in exts:
+        images.extend(sorted(glob.glob(os.path.join(img_dir, pattern))))
     for img_path in images:
         stem = os.path.splitext(os.path.basename(img_path))[0]
         dota_str = predict_image(img_path, score_thr=score_thr)

@@ -3,7 +3,7 @@ checkpoints/
 
 # Saved predictions
 pred/
-
+sample_data/
 # Python cache
 __pycache__/
 **/__pycache__/
@@ -17,3 +17,4 @@ __pycache__/
 
 # Environment
 .env
+sample_data/
