@@ -1,57 +1,87 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Mandara inference server — start after pod reset
-# Usage:  bash /workspace/runpod_engine/start.sh
-#
-# Everything (conda, packages) lives in /workspace/miniconda — persistent.
-# No reinstallation needed after pod resets.
+# Mandara inference server — start
+# Works wherever the repo is cloned and on any server.
 # ─────────────────────────────────────────────────────────────────────────────
 set -e
-PROJ=/workspace/runpod_engine
-CONDA_HOME=/workspace/miniconda
 
-# Ensure conda paths point to /workspace/miniconda (survives pod moves)
-if grep -q '/opt/miniconda' $CONDA_HOME/etc/profile.d/conda.sh 2>/dev/null; then
-    sed -i 's|/opt/miniconda|/workspace/miniconda|g' $CONDA_HOME/etc/profile.d/conda.sh
-    grep -rl '#!/opt/miniconda' $CONDA_HOME/bin/ 2>/dev/null | xargs sed -i 's|#!/opt/miniconda|#!/workspace/miniconda|g' 2>/dev/null || true
+PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "==> Project root: $PROJ"
+
+# ── 1. Find conda ─────────────────────────────────────────────────────────────
+CONDA_BASE=""
+
+if command -v conda &>/dev/null; then
+    CONDA_BASE="$(conda info --base 2>/dev/null)"
 fi
 
-echo "=== Activating conda from persistent storage ==="
-source $CONDA_HOME/etc/profile.d/conda.sh
-conda activate ai4rs
+if [ -z "$CONDA_BASE" ]; then
+    for candidate in /opt/miniconda /sfs/miniconda /workspace/miniconda \
+                     "$HOME/miniconda3" "$HOME/miniconda" "$HOME/anaconda3"; do
+        if [ -f "$candidate/etc/profile.d/conda.sh" ]; then
+            CONDA_BASE="$candidate"
+            break
+        fi
+    done
+fi
 
-echo "=== Starting inference server ==="
-cd $PROJ
-export PYTHONPATH=$PROJ:$PYTHONPATH
+if [ -z "$CONDA_BASE" ]; then
+    echo "ERROR: conda not found. Run:  bash $PROJ/setup.sh"
+    exit 1
+fi
 
-# Kill any old server instance
+echo "==> Using conda at: $CONDA_BASE"
+source "$CONDA_BASE/etc/profile.d/conda.sh"
+
+# ── 2. Activate env ───────────────────────────────────────────────────────────
+ENV_NAME="$(grep '^name:' "$PROJ/environment.yml" 2>/dev/null | awk '{print $2}')"
+ENV_NAME="${ENV_NAME:-ai4rs_infer}"
+
+conda activate "$ENV_NAME"
+
+# ── 3. Start inference server ─────────────────────────────────────────────────
+export PYTHONPATH="$PROJ:$PYTHONPATH"
+cd "$PROJ"
+
+echo "==> Stopping any running server..."
 pkill -f "python app.py" 2>/dev/null || true
 sleep 1
 
-nohup python app.py > $PROJ/server.log 2>&1 &
+echo "==> Starting server..."
+nohup python app.py > "$PROJ/server.log" 2>&1 &
 SERVER_PID=$!
-echo "Server PID: $SERVER_PID"
+echo "    PID: $SERVER_PID  |  Log: $PROJ/server.log"
 
-# Wait for model to load (up to 60s)
-echo "Waiting for model to load..."
+# ── 4. Wait for model to load ─────────────────────────────────────────────────
+echo "==> Waiting for model to load (up to 60s)..."
+LOADED=false
 for i in $(seq 1 30); do
     sleep 2
-    STATUS=$(curl -s http://localhost:8000/health 2>/dev/null | python3 -c \
-        "import sys,json; d=json.load(sys.stdin); print(d.get('model_ready',''))" 2>/dev/null) || true
+    STATUS=$(curl -s http://localhost:8000/health 2>/dev/null \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('model_ready',''))" \
+        2>/dev/null) || true
     if [ "$STATUS" = "True" ]; then
-        echo "Model loaded! ($((i*2))s)"
+        echo "    Model ready in $((i*2))s"
+        LOADED=true
         break
     fi
 done
 
-echo ""
-echo "=== Starting public tunnel ==="
-pkill cloudflared 2>/dev/null || true
-sleep 1
-nohup cloudflared tunnel --url http://localhost:8000 --no-autoupdate \
-    > $PROJ/tunnel.log 2>&1 &
-sleep 6
-PUBLIC_URL=$(grep -o 'https://[a-z0-9\-]*\.trycloudflare\.com' $PROJ/tunnel.log | head -1)
+if [ "$LOADED" = "false" ]; then
+    echo "    WARNING: Model not loaded yet — check $PROJ/server.log"
+fi
+
+# ── 5. Optional Cloudflare tunnel ────────────────────────────────────────────
+PUBLIC_URL=""
+if command -v cloudflared &>/dev/null; then
+    echo "==> Starting Cloudflare tunnel..."
+    pkill cloudflared 2>/dev/null || true
+    sleep 1
+    nohup cloudflared tunnel --url http://localhost:8000 --no-autoupdate \
+        > "$PROJ/tunnel.log" 2>&1 &
+    sleep 6
+    PUBLIC_URL=$(grep -o 'https://[a-z0-9\-]*\.trycloudflare\.com' "$PROJ/tunnel.log" | head -1)
+fi
 
 RUNPOD_URL=""
 if [ -n "$RUNPOD_POD_ID" ]; then
@@ -62,11 +92,7 @@ echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  Mandara is live!                                            ║"
 echo "║                                                              ║"
-echo "║  Local:  http://localhost:8000                               ║"
-if [ -n "$RUNPOD_URL" ]; then
-printf  "║  RunPod: %-52s║\n" "$RUNPOD_URL"
-fi
-if [ -n "$PUBLIC_URL" ]; then
-printf  "║  Tunnel: %-52s║\n" "$PUBLIC_URL"
-fi
+echo "║  Local:   http://localhost:8000                              ║"
+[ -n "$RUNPOD_URL" ] && printf "║  RunPod:  %-50s║\n" "$RUNPOD_URL"
+[ -n "$PUBLIC_URL" ] && printf "║  Tunnel:  %-50s║\n" "$PUBLIC_URL"
 echo "╚══════════════════════════════════════════════════════════════╝"

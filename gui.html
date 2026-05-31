@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mandara — Inference GUI</title>
+<title>Mandara — Model Comparison</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
@@ -14,12 +14,13 @@ header {
   padding: 14px 32px; display: flex; align-items: center; gap: 12px;
 }
 header h1 { font-size: 1.05rem; font-weight: 600; color: #90cdf4; }
+header .subtitle { font-size: 0.75rem; color: #4a5568; margin-left: 4px; }
 #status-dot { width: 8px; height: 8px; border-radius: 50%; background: #fc8181; margin-left: auto; box-shadow: 0 0 6px #fc8181; }
 #status-dot.ok { background: #68d391; box-shadow: 0 0 6px #68d391; }
 #status-label { font-size: 0.73rem; color: #718096; }
 
 /* ── Layout ── */
-main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
+main { max-width: 1200px; margin: 28px auto; padding: 0 24px; }
 .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; padding: 22px; margin-bottom: 18px; }
 .card h2 { font-size: 0.75rem; color: #718096; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
 
@@ -28,7 +29,7 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
   border: 2px dashed #4a5568; border-radius: 10px; padding: 40px 24px;
   text-align: center; cursor: pointer; transition: border-color .2s, background .2s; position: relative;
 }
-#drop-zone.hover   { border-color: #63b3ed; background: #1e2d42; }
+#drop-zone.hover    { border-color: #63b3ed; background: #1e2d42; }
 #drop-zone.has-file { border-color: #68d391; background: #111e11; }
 #drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 #drop-icon  { font-size: 2rem; margin-bottom: 8px; }
@@ -77,12 +78,17 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
 .step.done   .step-icon { background: #1a3a1a; color: #68d391; }
 .step.active .step-icon { background: #1a2b3a; color: #63b3ed; }
 .step-body { flex: 1; }
-.step-label { font-size: 0.82rem; color: #a0aec0; line-height: 1.4; }
+.step-label  { font-size: 0.82rem; color: #a0aec0; line-height: 1.4; }
 .step.done   .step-label { color: #68d391; }
 .step.active .step-label { color: #e2e8f0; }
 .step-detail { font-size: 0.72rem; color: #4a5568; margin-top: 3px; }
 .step.active .step-detail { color: #718096; }
-/* Progress bar */
+.step-tag {
+  font-size: 0.62rem; font-weight: 700; padding: 1px 6px; border-radius: 3px;
+  text-transform: uppercase; letter-spacing: .05em; margin-right: 6px;
+}
+.tag-mandara { background: #1a3050; color: #63b3ed; }
+.tag-deim    { background: #2d1a3a; color: #b794f4; }
 .prog-bar { height: 4px; background: #2d3748; border-radius: 2px; margin-top: 8px; overflow: hidden; }
 .prog-fill { height: 100%; background: #63b3ed; border-radius: 2px; transition: width .3s; width: 0%; }
 
@@ -92,36 +98,93 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
   color: #fc8181; border-radius: 8px; padding: 10px 14px; margin-top: 14px; font-size: 0.8rem;
 }
 
-/* ── Canvas card ── */
-#canvas-card { display: none; }
-.view-row { display: flex; align-items: center; gap: 0; margin-bottom: 14px; }
+/* ── Comparison grid ── */
+#compare-card { display: none; }
+.compare-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+@media (max-width: 760px) { .compare-grid { grid-template-columns: 1fr; } }
+
+.model-panel {
+  background: #111827; border: 1px solid #2d3748; border-radius: 10px;
+  padding: 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.model-panel-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.model-title {
+  font-size: 0.8rem; font-weight: 700; color: #e2e8f0;
+  display: flex; align-items: center; gap: 6px;
+}
+.model-subtitle { font-size: 0.68rem; color: #4a5568; }
+
+.view-row { display: flex; align-items: center; gap: 8px; }
 .view-toggle { display: flex; border: 1px solid #2d3748; border-radius: 7px; overflow: hidden; }
 .view-btn {
-  padding: 7px 16px; font-size: 0.78rem; font-weight: 600;
+  padding: 5px 12px; font-size: 0.73rem; font-weight: 600;
   background: #0f1117; color: #718096; border: none; cursor: pointer; transition: background .15s, color .15s;
 }
 .view-btn + .view-btn { border-left: 1px solid #2d3748; }
 .view-btn.active { background: #2b4a70; color: #90cdf4; }
 .view-btn:hover:not(.active) { background: #1a2535; color: #a0aec0; }
-#dl-btn {
-  margin-left: auto; background: #2d3748; color: #a0aec0;
-  border: none; border-radius: 7px; padding: 7px 14px; font-size: 0.78rem; cursor: pointer;
+
+.canvas-container { overflow: auto; border-radius: 8px; border: 1px solid #1a2535; max-height: 440px; background: #0a0d14; }
+canvas { display: block; cursor: crosshair; }
+
+.legend { display: none; flex-wrap: wrap; gap: 6px 12px; padding-top: 8px; border-top: 1px solid #2d3748; }
+.leg-item { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #a0aec0; }
+.leg-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+.panel-stats {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  padding-top: 8px; border-top: 1px solid #2d3748;
 }
-#dl-btn:hover { background: #4a5568; color: #e2e8f0; }
+.stat-item { font-size: 0.73rem; }
+.stat-item .key { color: #718096; }
+.stat-item .val { color: #90cdf4; font-weight: 600; margin-left: 3px; }
+.stat-item.count .val { color: #f6ad55; }
+.stat-item.saved .val { color: #68d391; font-size: 0.68rem; }
 
-/* Canvas container — scrollable when zoomed */
-#canvas-container { overflow: auto; border-radius: 8px; border: 1px solid #1a2535; max-height: 540px; background: #0a0d14; }
-#overlay-canvas { display: block; cursor: crosshair; }
+.dl-txt-btn {
+  background: none; border: 1px solid #4a5568; color: #718096;
+  border-radius: 6px; padding: 4px 10px; font-size: 0.7rem; cursor: pointer;
+  white-space: nowrap;
+}
+.dl-txt-btn:hover:not(:disabled) { border-color: #68d391; color: #68d391; }
+.dl-txt-btn:disabled { opacity: .35; cursor: not-allowed; }
 
-/* ── Legend ── */
-#legend { display: none; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #2d3748; }
-.leg-item { display: flex; align-items: center; gap: 5px; font-size: 0.73rem; color: #a0aec0; }
-.leg-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+/* ── View mode + patch navigator ── */
+#view-mode-bar {
+  display: none;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  margin-top: 4px;
+  border-top: 1px solid #2d3748;
+  flex-wrap: wrap;
+}
+#patch-controls {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.patch-label {
+  font-size: 0.78rem; color: #90cdf4;
+  min-width: 80px; text-align: center; font-weight: 600;
+}
+#patch-info {
+  font-size: 0.72rem; color: #a0aec0;
+  display: flex; gap: 10px; align-items: center;
+}
+#patch-info .pi-m { color: #63b3ed; }
+#patch-info .pi-d { color: #b794f4; }
+#patch-info .pi-o { color: #4a5568; }
 
-/* ── Zoom row ── */
+/* ── Shared zoom ── */
 .zoom-row {
-  display: flex; align-items: center; gap: 8px; margin-top: 12px;
-  padding-top: 12px; border-top: 1px solid #2d3748;
+  display: flex; align-items: center; gap: 8px; margin-top: 14px;
+  padding-top: 14px; border-top: 1px solid #2d3748;
 }
 .zoom-label { font-size: 0.73rem; color: #718096; margin-right: 4px; }
 .zoom-btn {
@@ -130,7 +193,7 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   transition: background .15s;
 }
-.zoom-btn:hover { background: #4a5568; color: #e2e8f0; }
+.zoom-btn:hover:not(:disabled) { background: #4a5568; color: #e2e8f0; }
 .zoom-btn:disabled { opacity: .3; cursor: not-allowed; }
 #zoom-level { font-size: 0.78rem; color: #90cdf4; min-width: 36px; text-align: center; font-weight: 600; }
 #zoom-fit {
@@ -139,31 +202,24 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
 }
 #zoom-fit:hover { border-color: #63b3ed; color: #90cdf4; }
 
+/* ── Raw predictions toggle ── */
+.raw-section { margin-top: 10px; }
+.toggle-raw-btn {
+  background: none; border: 1px solid #4a5568; color: #718096;
+  border-radius: 6px; padding: 3px 10px; font-size: 0.7rem; cursor: pointer;
+}
+.toggle-raw-btn:hover { border-color: #63b3ed; color: #90cdf4; }
+.pred-text {
+  display: none; background: #0f1117; border: 1px solid #2d3748; border-radius: 7px;
+  padding: 10px; font-family: monospace; font-size: 0.66rem; color: #a0aec0;
+  max-height: 200px; overflow-y: auto; white-space: pre; line-height: 1.6; margin-top: 6px;
+}
+
 /* ── Tooltip ── */
-#tooltip {
+.tooltip-el {
   display: none; position: fixed; background: #1a1f2e; border: 1px solid #4a5568;
   color: #e2e8f0; font-size: 0.73rem; padding: 4px 10px; border-radius: 6px;
   pointer-events: none; z-index: 100; white-space: nowrap;
-}
-
-/* ── Result meta ── */
-#result-meta { display: none; }
-.meta-row { display: flex; align-items: center; gap: 14px; background: #0f1117; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; flex-wrap: wrap; }
-.meta-item { font-size: 0.76rem; }
-.meta-item .key { color: #718096; }
-.meta-item .val { color: #90cdf4; font-weight: 600; margin-left: 4px; }
-.meta-item.saved .val  { color: #68d391; }
-.meta-item.count .val  { color: #f6ad55; }
-.meta-item.patches .val { color: #63b3ed; }
-#toggle-raw {
-  background: none; border: 1px solid #4a5568; color: #718096;
-  border-radius: 6px; padding: 4px 11px; font-size: 0.73rem; cursor: pointer;
-}
-#toggle-raw:hover { border-color: #63b3ed; color: #90cdf4; }
-#pred-text {
-  display: none; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px;
-  padding: 12px; font-family: monospace; font-size: 0.7rem; color: #a0aec0;
-  max-height: 260px; overflow-y: auto; white-space: pre; line-height: 1.6;
 }
 
 /* ── Sample tiles ── */
@@ -185,23 +241,16 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
 .sample-load-btn {
   background: #2b6cb0; color: #fff; border: none; border-radius: 5px;
   padding: 5px 14px; font-size: 0.75rem; cursor: pointer; margin-top: 4px;
-  transition: background .15s; pointer-events: none;
+  transition: background .15px; pointer-events: none;
 }
 .sample-tile:hover .sample-load-btn { background: #3182ce; }
 
-/* ── Download txt ── */
-#dl-txt-btn {
-  background: none; border: 1px solid #4a5568; color: #718096;
-  border-radius: 6px; padding: 4px 11px; font-size: 0.73rem; cursor: pointer;
-}
-#dl-txt-btn:hover:not(:disabled) { border-color: #68d391; color: #68d391; }
-#dl-txt-btn:disabled { opacity: .35; cursor: not-allowed; }
-.action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-
 /* ── History ── */
 #history-list { display: flex; flex-direction: column; gap: 6px; }
-.hist-item { display: flex; align-items: center; gap: 10px; background: #0f1117; border-radius: 7px; padding: 8px 12px; font-size: 0.76rem; }
+.hist-item { background: #0f1117; border-radius: 7px; padding: 8px 12px; font-size: 0.74rem; }
+.hist-row  { display: flex; align-items: center; gap: 10px; }
 .hist-seq  { color: #4a5568; min-width: 30px; }
+.hist-model { font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
 .hist-fname { color: #90cdf4; flex: 1; word-break: break-all; }
 .hist-cnt  { color: #f6ad55; min-width: 55px; text-align: right; }
 #history-empty { color: #4a5568; font-size: 0.8rem; text-align: center; padding: 10px; }
@@ -213,38 +262,38 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
   <div id="status-dot"></div>
   <span id="status-label">checking…</span>
 </header>
-<div id="tooltip"></div>
+
+<div class="tooltip-el" id="tooltip-m"></div>
+<div class="tooltip-el" id="tooltip-d"></div>
+
 <main>
 
-<!-- ── Features info card ── -->
+<!-- ── About card ── -->
 <div class="card" style="border-left:3px solid #4299e1">
-  <h2 style="margin-bottom:10px">About this tool</h2>
+  <h2 style="margin-bottom:10px">Side-by-side model comparison</h2>
   <p style="font-size:0.82rem;color:#a0aec0;line-height:1.7;margin:0">
-    Upload any <strong style="color:#e2e8f0">3-band RGB satellite image</strong> to detect vehicles using an oriented bounding box model.<br>
-    After inference, download the raw prediction file in <strong style="color:#e2e8f0">DOTA format</strong> — compatible with standard accuracy evaluation pipelines.
+    Upload a satellite image to run inference with both models simultaneously and compare predictions.
   </p>
-  <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px">
-    <div style="font-size:0.78rem;color:#718096">
-      <span style="color:#68d391;margin-right:6px">✓</span><strong style="color:#cbd5e0">Formats</strong>&nbsp;&nbsp;PNG · JPG · TIFF <span style="color:#4a5568">(3-band RGB only)</span>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+    <div style="background:#0f1117;border:1px solid #2d3748;border-radius:8px;padding:12px">
+      <div style="font-size:0.72rem;font-weight:700;color:#63b3ed;margin-bottom:6px">MANDARA</div>
+      <div style="font-size:0.75rem;color:#718096;line-height:1.6">
+        Classes: vehicle · smallvehicle
+      </div>
     </div>
-    <div style="font-size:0.78rem;color:#718096">
-      <span style="color:#68d391;margin-right:6px">✓</span><strong style="color:#cbd5e0">Max size</strong>&nbsp;&nbsp;2 GB &nbsp;<span style="color:#4a5568">(≈ 30 km² at 0.3 m/px)</span>
-    </div>
-    <div style="font-size:0.78rem;color:#718096">
-      <span style="color:#68d391;margin-right:6px">✓</span><strong style="color:#cbd5e0">Large images</strong>&nbsp;&nbsp;auto-tiled into 1280×720 patches
-    </div>
-    <div style="font-size:0.78rem;color:#718096">
-      <span style="color:#68d391;margin-right:6px">✓</span><strong style="color:#cbd5e0">Output</strong>&nbsp;&nbsp;DOTA .txt — use directly for mAP / accuracy evaluation
+    <div style="background:#0f1117;border:1px solid #2d3748;border-radius:8px;padding:12px">
+      <div style="font-size:0.72rem;font-weight:700;color:#b794f4;margin-bottom:6px">DEIMv2</div>
+      <div style="font-size:0.75rem;color:#718096;line-height:1.6">
+        Classes: vehicle · smallvehicle
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ── Sample images card ── -->
+<!-- ── Sample images ── -->
 <div class="card">
   <h2>Try a Sample</h2>
-  <p style="font-size:0.8rem;color:#718096;margin-bottom:14px">
-    Don't have an image? Click any sample below to load it instantly.
-  </p>
+  <p style="font-size:0.8rem;color:#718096;margin-bottom:14px">Don't have an image? Click any sample below to load it instantly.</p>
   <div class="sample-grid" id="sample-grid">
     <span style="color:#4a5568;font-size:0.8rem">Loading samples…</span>
   </div>
@@ -264,87 +313,164 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
     <input type="range" id="score-slider" min="0" max="1" step="0.01" value="0.3">
     <span class="score-val" id="score-val">0.30</span>
   </div>
-  <button id="run-btn" disabled>Run Inference</button>
+  <button id="run-btn" disabled>Run Inference — Compare Both Models</button>
 
   <!-- Progress steps -->
   <div id="progress-panel">
     <div class="steps">
       <div class="step" id="step-upload">
         <div class="step-icon" id="si-upload">1</div>
+        <div class="step-body"><div class="step-label">Image received</div></div>
+      </div>
+      <div class="step" id="step-mpatch">
+        <div class="step-icon" id="si-mpatch">2</div>
         <div class="step-body">
-          <div class="step-label">Image received</div>
+          <div class="step-label" id="sl-mpatch">
+            <span class="step-tag tag-mandara">Mandara</span>Splitting into patches…
+          </div>
+          <div class="step-detail" id="sd-mpatch"></div>
         </div>
       </div>
-      <div class="step" id="step-patch">
-        <div class="step-icon" id="si-patch">2</div>
+      <div class="step" id="step-minfer">
+        <div class="step-icon" id="si-minfer">3</div>
         <div class="step-body">
-          <div class="step-label" id="sl-patch">Splitting into patches…</div>
-          <div class="step-detail" id="sd-patch"></div>
+          <div class="step-label" id="sl-minfer">
+            <span class="step-tag tag-mandara">Mandara</span>Running OrientedFormer…
+          </div>
+          <div class="step-detail" id="sd-minfer"></div>
+          <div class="prog-bar" id="pb-wrap" style="display:none"><div class="prog-fill" id="prog-fill"></div></div>
         </div>
       </div>
-      <div class="step" id="step-infer">
-        <div class="step-icon" id="si-infer">3</div>
+      <div class="step" id="step-mstitch">
+        <div class="step-icon" id="si-mstitch">4</div>
         <div class="step-body">
-          <div class="step-label" id="sl-infer">Running model inference…</div>
-          <div class="step-detail" id="sd-infer"></div>
-          <div class="prog-bar" id="pb-wrap" style="display:none">
-            <div class="prog-fill" id="prog-fill"></div>
+          <div class="step-label" id="sl-mstitch">
+            <span class="step-tag tag-mandara">Mandara</span>Stitching predictions…
           </div>
         </div>
       </div>
-      <div class="step" id="step-stitch">
-        <div class="step-icon" id="si-stitch">4</div>
+      <div class="step" id="step-dinfer">
+        <div class="step-icon" id="si-dinfer">5</div>
         <div class="step-body">
-          <div class="step-label" id="sl-stitch">Stitching predictions to full image…</div>
+          <div class="step-label" id="sl-dinfer">
+            <span class="step-tag tag-deim">DEIMv2</span>Running DINO vehicle detector…
+          </div>
+          <div class="step-detail" id="sd-dinfer"></div>
         </div>
       </div>
       <div class="step" id="step-done">
-        <div class="step-icon" id="si-done">5</div>
-        <div class="step-body">
-          <div class="step-label" id="sl-done">Complete</div>
+        <div class="step-icon" id="si-done">6</div>
+        <div class="step-body"><div class="step-label" id="sl-done">Complete</div></div>
+      </div>
+    </div>
+  </div>
+  <div id="error-box"></div>
+</div>
+
+<!-- ── Comparison canvas card ── -->
+<div class="card" id="compare-card">
+  <div class="compare-grid">
+
+    <!-- Left: Mandara -->
+    <div class="model-panel" id="panel-mandara">
+      <div class="model-panel-header">
+        <div>
+          <div class="model-title">
+            <span class="step-tag tag-mandara" style="font-size:0.65rem">Mandara</span>
+            OrientedFormer
+          </div>
+          <div class="model-subtitle">Trained · Epoch 9</div>
         </div>
+        <div class="view-row">
+          <div class="view-toggle">
+            <button class="view-btn active" id="mv-overlay">Overlay</button>
+            <button class="view-btn"        id="mv-original">Original</button>
+          </div>
+        </div>
+      </div>
+      <div class="canvas-container" id="m-container">
+        <canvas id="canvas-m"></canvas>
+      </div>
+      <div class="legend" id="legend-m"></div>
+      <div class="panel-stats">
+        <div class="stat-item count"><span class="key">Detections</span><span class="val" id="m-count">—</span></div>
+        <div class="stat-item"><span class="key">vehicle</span><span class="val" id="m-vehicle">—</span></div>
+        <div class="stat-item"><span class="key">smallvehicle</span><span class="val" id="m-small">—</span></div>
+        <span id="m-filename" style="display:none"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="dl-txt-btn" id="dl-mandara" disabled>⬇ Mandara .txt</button>
+        <button class="toggle-raw-btn" id="toggle-raw-m">Show raw</button>
+      </div>
+      <div class="raw-section">
+        <div class="pred-text" id="pred-text-m"></div>
+      </div>
+    </div>
+
+    <!-- Right: DEIMv2 -->
+    <div class="model-panel" id="panel-deim">
+      <div class="model-panel-header">
+        <div>
+          <div class="model-title">
+            <span class="step-tag tag-deim" style="font-size:0.65rem">DEIMv2</span>
+            DINO Fine-tuned
+          </div>
+          <div class="model-subtitle">Trained · Epoch 72</div>
+        </div>
+        <div class="view-row">
+          <div class="view-toggle">
+            <button class="view-btn active" id="dv-overlay">Overlay</button>
+            <button class="view-btn"        id="dv-original">Original</button>
+          </div>
+        </div>
+      </div>
+      <div class="canvas-container" id="d-container">
+        <canvas id="canvas-d"></canvas>
+      </div>
+      <div class="legend" id="legend-d"></div>
+      <div class="panel-stats">
+        <div class="stat-item count"><span class="key">Detections</span><span class="val" id="d-count">—</span></div>
+        <div class="stat-item"><span class="key">vehicle</span><span class="val" id="d-vehicle">—</span></div>
+        <div class="stat-item"><span class="key">smallvehicle</span><span class="val" id="d-small">—</span></div>
+        <span id="d-filename" style="display:none"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="dl-txt-btn" id="dl-deim" disabled>⬇ DEIMv2 .txt</button>
+        <button class="toggle-raw-btn" id="toggle-raw-d">Show raw</button>
+      </div>
+      <div class="raw-section">
+        <div class="pred-text" id="pred-text-d"></div>
       </div>
     </div>
   </div>
 
-  <div id="error-box"></div>
-</div>
-
-<!-- ── Canvas card ── -->
-<div class="card" id="canvas-card">
-  <div class="view-row">
+  <!-- ── View mode + patch navigator (shared, below grid) ── -->
+  <div id="view-mode-bar">
+    <span style="font-size:0.73rem;color:#718096;white-space:nowrap;flex-shrink:0">View Mode</span>
     <div class="view-toggle">
-      <button class="view-btn active" id="view-overlay">Overlay</button>
-      <button class="view-btn"        id="view-original">Original</button>
+      <button class="view-btn active" id="mode-full">Full Image</button>
+      <button class="view-btn"        id="mode-patch">Patch View &middot; Top 10</button>
     </div>
-    <button id="dl-btn" title="Download annotated image">↓ PNG</button>
+    <div id="patch-controls">
+      <button class="zoom-btn" id="patch-prev" title="Previous patch (&#8592;)">&#8592;</button>
+      <span class="patch-label" id="patch-label">Patch 1 / 5</span>
+      <button class="zoom-btn" id="patch-next" title="Next patch (&#8594;)">&#8594;</button>
+      <div id="patch-info">
+        <span><span class="pi-m">M</span> <span id="pi-m-cnt">—</span></span>
+        <span><span class="pi-d">D</span> <span id="pi-d-cnt">—</span></span>
+        <span class="pi-o" id="pi-origin"></span>
+      </div>
+    </div>
   </div>
-  <div id="canvas-container">
-    <canvas id="overlay-canvas"></canvas>
-  </div>
-  <div id="legend"></div>
+
+  <!-- Shared zoom (applies to both canvases) -->
   <div class="zoom-row">
-    <span class="zoom-label">Zoom</span>
-    <button class="zoom-btn" id="zoom-out" title="Zoom out">−</button>
+    <span class="zoom-label">Zoom (both)</span>
+    <button class="zoom-btn" id="zoom-out">−</button>
     <span id="zoom-level">1×</span>
-    <button class="zoom-btn" id="zoom-in"  title="Zoom in">+</button>
+    <button class="zoom-btn" id="zoom-in">+</button>
     <button id="zoom-fit">Fit</button>
   </div>
-</div>
-
-<!-- ── Result meta ── -->
-<div id="result-meta">
-  <div class="meta-row">
-    <div class="meta-item saved">  <span class="key">Saved as</span>   <span class="val" id="r-filename">—</span></div>
-    <div class="meta-item count">  <span class="key">Detections</span> <span class="val" id="r-count">—</span></div>
-    <div class="meta-item patches"><span class="key">Patches</span>    <span class="val" id="r-patches">—</span></div>
-    <div class="meta-item">        <span class="key">Threshold</span>  <span class="val" id="r-thr">—</span></div>
-  </div>
-  <div class="action-row">
-    <button id="toggle-raw">Show raw predictions</button>
-    <button id="dl-txt-btn" disabled>⬇ Download .txt</button>
-  </div>
-  <div id="pred-text"></div>
 </div>
 
 <!-- ── History ── -->
@@ -355,7 +481,7 @@ main { max-width: 960px; margin: 28px auto; padding: 0 24px; }
 
 </main>
 <script>
-// ── DOM ─────────────────────────────────────────────────────────────────────
+// ── DOM ──────────────────────────────────────────────────────────────────────
 const dropZone      = document.getElementById('drop-zone');
 const fileInput     = document.getElementById('file-input');
 const fileNameEl    = document.getElementById('file-name');
@@ -364,25 +490,19 @@ const scoreValEl    = document.getElementById('score-val');
 const runBtn        = document.getElementById('run-btn');
 const progressPanel = document.getElementById('progress-panel');
 const errorBox      = document.getElementById('error-box');
-const canvasCard    = document.getElementById('canvas-card');
-const canvasContainer = document.getElementById('canvas-container');
-const canvas        = document.getElementById('overlay-canvas');
-const legendEl      = document.getElementById('legend');
-const dlBtn         = document.getElementById('dl-btn');
-const resultMeta    = document.getElementById('result-meta');
-const predTextEl    = document.getElementById('pred-text');
-const rFilename     = document.getElementById('r-filename');
-const rCount        = document.getElementById('r-count');
-const rPatches      = document.getElementById('r-patches');
-const rThr          = document.getElementById('r-thr');
+const compareCard   = document.getElementById('compare-card');
 const statusDot     = document.getElementById('status-dot');
 const statusLbl     = document.getElementById('status-label');
 const historyList   = document.getElementById('history-list');
 const histEmpty     = document.getElementById('history-empty');
-const tooltip       = document.getElementById('tooltip');
-const dlTxtBtn      = document.getElementById('dl-txt-btn');
 
-// ── Class colours ────────────────────────────────────────────────────────────
+// Canvases
+const canvasM = document.getElementById('canvas-m');
+const canvasD = document.getElementById('canvas-d');
+const ctxM    = canvasM.getContext('2d');
+const ctxD    = canvasD.getContext('2d');
+
+// ── Class colours ─────────────────────────────────────────────────────────────
 const CLASS_COLOR = {
   arty:         '#ff4d4d',
   camo:         '#44dd88',
@@ -395,27 +515,43 @@ const CLASS_COLOR = {
 };
 function colorFor(cls) { return CLASS_COLOR[cls] || '#ffffff'; }
 
-// ── State ────────────────────────────────────────────────────────────────────
-let selectedFile  = null;
-let loadedImage   = null;
-let lastPreds     = [];
-let lastResult    = null;
-let currentView   = 'overlay';   // 'overlay' | 'original'
-const ZOOM_STEPS  = [0.5, 0.75, 1, 1.5, 2, 3, 4];
-let zoomIdx       = 2;           // 1× = fit
-let canvasScale   = 1;           // actual draw scale (fitScale * zoomMultiplier)
+// ── Tiling constants (match patcher.py exactly) ───────────────────────────────
+const PATCH_W = 1280, PATCH_H = 720, OVERLAP = 200;
+const STEP_W  = PATCH_W - OVERLAP;   // 1080
+const STEP_H  = PATCH_H - OVERLAP;   // 520
 
-// ── Health ───────────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedFile = null;
+let loadedImage  = null;
+let mandaraPreds = [];
+let deimPreds    = [];
+let mandaraRaw   = null;
+let deimRaw      = null;
+let mandaraResult= null;
+let deimResult   = null;
+let viewM        = 'overlay';
+let viewD        = 'overlay';
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3, 4];
+let zoomIdx      = 2;
+let canvasScale  = 1;
+
+// Patch view state
+let viewMode        = 'full';   // 'full' | 'patch'
+let imgOrigins      = [];       // all tile origins [[ox,oy], ...]
+let top5Patches     = [];       // top 5 scored tiles [{origin, count, totalScore}, ...]
+let currentPatchIdx = 0;
+
+// ── Health ────────────────────────────────────────────────────────────────────
 async function checkHealth() {
   try {
     const j = await fetch('/health').then(r => r.json());
-    if (j.model_ready) { statusDot.classList.add('ok'); statusLbl.textContent = 'Model ready'; }
+    if (j.model_ready) { statusDot.classList.add('ok'); statusLbl.textContent = 'Mandara ready'; }
     else { statusLbl.textContent = 'Model loading…'; setTimeout(checkHealth, 3000); }
   } catch { statusLbl.textContent = 'Server unreachable'; setTimeout(checkHealth, 5000); }
 }
 checkHealth();
 
-// ── Slider ───────────────────────────────────────────────────────────────────
+// ── Slider ────────────────────────────────────────────────────────────────────
 scoreSlider.addEventListener('input', () => {
   scoreValEl.textContent = parseFloat(scoreSlider.value).toFixed(2);
 });
@@ -429,27 +565,16 @@ dropZone.addEventListener('drop', e => {
 });
 fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
 
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB — matches server limit
-const ALLOWED_EXTS    = new Set(['.png', '.jpg', '.jpeg', '.tif', '.tiff']);
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+const ALLOWED_EXTS     = new Set(['.png', '.jpg', '.jpeg', '.tif', '.tiff']);
 
 function setFile(f) {
-  // Format check
   const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
-  if (!ALLOWED_EXTS.has(ext)) {
-    showError(`Unsupported format "${ext}". Please upload a PNG, JPG, or TIFF (3-band RGB).`);
-    return;
-  }
-  // Size check
-  if (f.size > MAX_UPLOAD_BYTES) {
-    const gb = (f.size / 1e9).toFixed(2);
-    showError(`File too large (${gb} GB). Maximum allowed is 2 GB (≈ 30 km² at 0.3 m/px).`);
-    return;
-  }
-
+  if (!ALLOWED_EXTS.has(ext)) { showError(`Unsupported format "${ext}". Use PNG, JPG, or TIFF (3-band RGB).`); return; }
+  if (f.size > MAX_UPLOAD_BYTES) { showError(`File too large. Max 2 GB.`); return; }
   selectedFile = f;
-  lastPreds = [];
-  const sizeMB = (f.size / 1e6).toFixed(1);
-  fileNameEl.textContent  = `${f.name}  (${sizeMB} MB)`;
+  mandaraPreds = []; deimPreds = [];
+  fileNameEl.textContent   = `${f.name}  (${(f.size / 1e6).toFixed(1)} MB)`;
   fileNameEl.style.display = 'block';
   dropZone.classList.add('has-file');
   errorBox.style.display = 'none';
@@ -457,62 +582,144 @@ function setFile(f) {
 }
 
 function showError(msg) {
-  errorBox.textContent    = msg;
-  errorBox.style.display  = 'block';
-  runBtn.disabled         = true;
+  errorBox.textContent   = msg;
+  errorBox.style.display = 'block';
+  runBtn.innerHTML = 'Run Inference — Compare Both Models';
+  runBtn.disabled  = false;
 }
 
 // ── Progress helpers ──────────────────────────────────────────────────────────
-function stepState(id, state) { // 'pending' | 'active' | 'done'
+function stepState(id, state) {
   const el = document.getElementById('step-' + id);
   const ic = document.getElementById('si-' + id);
   el.classList.remove('active', 'done');
   if (state === 'active') el.classList.add('active');
-  if (state === 'done')   el.classList.add('done');
-  if (state === 'done')   ic.textContent = '✓';
+  if (state === 'done')   { el.classList.add('done'); ic.textContent = '✓'; }
 }
-function stepLabel(id, txt) { document.getElementById('sl-' + id).textContent = txt; }
 function stepDetail(id, txt) {
   const el = document.getElementById('sd-' + id);
   if (el) el.textContent = txt;
 }
 function resetSteps() {
-  ['upload','patch','infer','stitch','done'].forEach(id => stepState(id, 'pending'));
+  ['upload','mpatch','minfer','mstitch','dinfer','done'].forEach(id => {
+    const el = document.getElementById('step-' + id);
+    const ic = document.getElementById('si-' + id);
+    el.classList.remove('active','done');
+    if (ic && !/^\d$/.test(ic.textContent)) ic.textContent = el.dataset.num || '?';
+  });
+  ['upload','mpatch','minfer','mstitch','dinfer','done'].forEach((id, i) => {
+    const ic = document.getElementById('si-' + id);
+    if (ic) ic.textContent = i + 1;
+  });
   document.getElementById('prog-fill').style.width = '0%';
   document.getElementById('pb-wrap').style.display = 'none';
-  stepLabel('patch', 'Splitting into patches…');
-  stepLabel('infer', 'Running model inference…');
-  stepLabel('stitch','Stitching predictions to full image…');
-  stepLabel('done',  'Complete');
-  stepDetail('patch', '');
-  stepDetail('infer', '');
+  stepDetail('mpatch', '');
+  stepDetail('minfer', '');
+  stepDetail('dinfer', '');
+}
+
+// ── Parse & calibrate predictions ────────────────────────────────────────────
+const SHOW_CLASSES = new Set(['vehicle', 'smallvehicle']);
+const SCORE_GAMMA  = 0.4;
+
+function parseCalibrated(text) {
+  if (!text || !text.trim()) return [];
+  return text.split('\n').filter(l => l.trim()).map(line => {
+    const p = line.trim().split(/\s+/);
+    return {
+      pts:   [[+p[0],+p[1]], [+p[2],+p[3]], [+p[4],+p[5]], [+p[6],+p[7]]],
+      cls:   p[8]  || 'unknown',
+      score: parseFloat(p[9] || 0),
+    };
+  }).filter(d => SHOW_CLASSES.has(d.cls) && d.score >= 0.1)
+    .map(d => ({ ...d, score: +Math.pow(d.score, SCORE_GAMMA).toFixed(4) }));
+}
+
+function filterByThr(arr, thr) { return arr.filter(d => d.score >= thr); }
+
+function countClasses(preds) {
+  return {
+    vehicle:      preds.filter(p => p.cls === 'vehicle').length,
+    smallvehicle: preds.filter(p => p.cls === 'smallvehicle').length,
+  };
+}
+
+// ── Tiling helpers (mirrors patcher.py _tile_origins) ────────────────────────
+function tileOrigins(imgW, imgH) {
+  function axis(size, step, crop) {
+    if (size <= crop) return [0];
+    const coords = [];
+    for (let c = 0; c < size - crop; c += step) coords.push(c);
+    const last = size - crop;
+    if (!coords.length || coords[coords.length - 1] < last) coords.push(last);
+    return [...new Set(coords.map(c => Math.max(0, c)))].sort((a, b) => a - b);
+  }
+  const xs = axis(imgW, STEP_W, PATCH_W);
+  const ys = axis(imgH, STEP_H, PATCH_H);
+  const out = [];
+  for (const y of ys) for (const x of xs) out.push([x, y]);
+  return out;
+}
+
+// Rank tiles by sum of Mandara raw scores (stable — not affected by display threshold).
+// Returns top 5.
+function rankPatches(origins) {
+  const raw = mandaraRaw || [];
+  const scored = origins.map((origin, idx) => {
+    const [ox, oy] = origin;
+    const pw = Math.min(PATCH_W, loadedImage ? loadedImage.naturalWidth  - ox : PATCH_W);
+    const ph = Math.min(PATCH_H, loadedImage ? loadedImage.naturalHeight - oy : PATCH_H);
+    const inTile = raw.filter(det => {
+      const cx = (det.pts[0][0] + det.pts[1][0] + det.pts[2][0] + det.pts[3][0]) / 4;
+      const cy = (det.pts[0][1] + det.pts[1][1] + det.pts[2][1] + det.pts[3][1]) / 4;
+      return cx >= ox && cx < ox + pw && cy >= oy && cy < oy + ph;
+    });
+    return {
+      idx,
+      origin,
+      count:      inTile.length,
+      totalScore: inTile.reduce((s, d) => s + d.score, 0),
+    };
+  }).sort((a, b) => b.totalScore - a.totalScore);
+  return scored.slice(0, 10);
+}
+
+// Compute patch draw scale for a given origin.
+function getPatchScale(ox, oy) {
+  if (!loadedImage) return 1;
+  const pw = Math.min(PATCH_W, loadedImage.naturalWidth  - ox);
+  const ph = Math.min(PATCH_H, loadedImage.naturalHeight - oy);
+  const cW = Math.min(document.getElementById('m-container').clientWidth || 560, 560);
+  const cH = 440;
+  const fit = Math.min(cW / pw, cH / ph, 1);
+  return Math.min(fit * ZOOM_STEPS[zoomIdx], 8192 / Math.max(pw, ph));
 }
 
 // ── Canvas rendering ──────────────────────────────────────────────────────────
-function drawCanvas(preds, view) {
+function computeScale() {
+  if (!loadedImage) return 1;
+  const cW  = Math.min(document.getElementById('m-container').clientWidth || 500, 560);
+  const cH  = 440;
+  const fit = Math.min(cW / loadedImage.naturalWidth, cH / loadedImage.naturalHeight, 1);
+  const zoom = ZOOM_STEPS[zoomIdx];
+  const maxS = 8192 / Math.max(loadedImage.naturalWidth, loadedImage.naturalHeight);
+  return Math.min(fit * zoom, maxS);
+}
+
+// Draw full-image canvas.
+function drawOne(canvas, preds, view) {
   if (!loadedImage) return;
-  const img   = loadedImage;
-  const cW    = canvasContainer.clientWidth  || 900;
-  const cH    = 540;
-  const fitW  = cW  / img.naturalWidth;
-  const fitH  = cH  / img.naturalHeight;
-  const fit   = Math.min(fitW, fitH, 1);
-  const zoom  = ZOOM_STEPS[zoomIdx];
-  const raw   = fit * zoom;
-  const maxS  = 8192 / Math.max(img.naturalWidth, img.naturalHeight);
-  canvasScale = Math.min(raw, maxS);
-
-  canvas.width  = Math.round(img.naturalWidth  * canvasScale);
-  canvas.height = Math.round(img.naturalHeight * canvasScale);
-
+  const s = canvasScale;
+  canvas.width  = Math.round(loadedImage.naturalWidth  * s);
+  canvas.height = Math.round(loadedImage.naturalHeight * s);
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(loadedImage, 0, 0, canvas.width, canvas.height);
 
   if (view === 'overlay' && preds.length > 0) {
-    const lw = Math.max(1, 1.5 * canvasScale);
+    const lw = Math.max(1, 1.5 * s);
     for (const p of preds) {
       const col = colorFor(p.cls);
-      const pts = p.pts.map(([x, y]) => [x * canvasScale, y * canvasScale]);
+      const pts = p.pts.map(([x, y]) => [x * s, y * s]);
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
@@ -524,38 +731,110 @@ function drawCanvas(preds, view) {
       ctx.stroke();
     }
   }
-  document.getElementById('zoom-level').textContent = zoom + '×';
+}
+
+// Draw patch canvas: crops image to tile, draws only detections whose centroid is in tile.
+function drawPatch(canvas, preds, view, patch) {
+  if (!loadedImage || !patch) return;
+  const [ox, oy] = patch.origin;
+  const natW = loadedImage.naturalWidth;
+  const natH = loadedImage.naturalHeight;
+  const pw = Math.min(PATCH_W, natW - ox);
+  const ph = Math.min(PATCH_H, natH - oy);
+  const s  = getPatchScale(ox, oy);
+
+  canvas.width  = Math.round(pw * s);
+  canvas.height = Math.round(ph * s);
+  const ctx = canvas.getContext('2d');
+
+  // Crop the image to this tile
+  ctx.drawImage(loadedImage, ox, oy, pw, ph, 0, 0, canvas.width, canvas.height);
+
+  if (view === 'overlay' && preds.length > 0) {
+    const lw = Math.max(1, 1.5 * s);
+    for (const p of preds) {
+      // Only draw if centroid is inside this tile
+      const cx = (p.pts[0][0] + p.pts[1][0] + p.pts[2][0] + p.pts[3][0]) / 4;
+      const cy = (p.pts[0][1] + p.pts[1][1] + p.pts[2][1] + p.pts[3][1]) / 4;
+      if (cx < ox || cx >= ox + pw || cy < oy || cy >= oy + ph) continue;
+
+      const col = colorFor(p.cls);
+      // Shift to patch-local coords then scale
+      const pts = p.pts.map(([x, y]) => [(x - ox) * s, (y - oy) * s]);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      ctx.fillStyle   = col + '28';
+      ctx.fill();
+      ctx.strokeStyle = col;
+      ctx.lineWidth   = lw;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawBoth() {
+  canvasScale = computeScale();
+  const thr = parseFloat(scoreSlider.value);
+
+  if (viewMode === 'patch' && top5Patches.length > 0) {
+    const patch = top5Patches[currentPatchIdx];
+    drawPatch(canvasM, filterByThr(mandaraPreds, thr), viewM, patch);
+    drawPatch(canvasD, filterByThr(deimPreds,   thr), viewD, patch);
+    updatePatchNav();
+  } else {
+    drawOne(canvasM, filterByThr(mandaraPreds, thr), viewM);
+    drawOne(canvasD,  filterByThr(deimPreds,   thr), viewD);
+  }
+
+  document.getElementById('zoom-level').textContent = ZOOM_STEPS[zoomIdx] + '×';
   document.getElementById('zoom-out').disabled = (zoomIdx === 0);
   document.getElementById('zoom-in').disabled  = (zoomIdx === ZOOM_STEPS.length - 1);
 }
 
-// ── Parse, filter & calibrate predictions ────────────────────────────────────
-// Only vehicle / smallvehicle classes are surfaced to users.
-// Scores are calibrated using gamma (power) scaling: calibrated = raw ^ GAMMA.
-// This lifts low raw scores into a readable range without ever clipping strong
-// detections to 1.0 — only a raw score of exactly 1.0 maps to 100%.
-const SHOW_CLASSES = new Set(['vehicle', 'smallvehicle']);
-const SCORE_GAMMA  = 0.4;   // tune lower (e.g. 0.3) to lift scores more aggressively
+// ── Patch nav helpers ─────────────────────────────────────────────────────────
+function updatePatchNav() {
+  if (!top5Patches.length) return;
+  const patch = top5Patches[currentPatchIdx];
+  const [ox, oy] = patch.origin;
+  const pw = loadedImage ? Math.min(PATCH_W, loadedImage.naturalWidth  - ox) : PATCH_W;
+  const ph = loadedImage ? Math.min(PATCH_H, loadedImage.naturalHeight - oy) : PATCH_H;
+  const thr = parseFloat(scoreSlider.value);
 
-function parseCalibrated(text) {
-  // 1. Parse all lines, keep only vehicle/smallvehicle with raw score >= 0.1
-  const raw = text.split('\n').filter(l => l.trim()).map(line => {
-    const p = line.trim().split(/\s+/);
-    return {
-      pts:   [[+p[0],+p[1]],[+p[2],+p[3]],[+p[4],+p[5]],[+p[6],+p[7]]],
-      cls:   p[8]  || 'unknown',
-      score: parseFloat(p[9] || 0),
-    };
-  }).filter(d => SHOW_CLASSES.has(d.cls) && d.score >= 0.1);
+  // Count visible detections in this patch for each model
+  function countInPatch(preds) {
+    return filterByThr(preds, thr).filter(d => {
+      const cx = (d.pts[0][0] + d.pts[1][0] + d.pts[2][0] + d.pts[3][0]) / 4;
+      const cy = (d.pts[0][1] + d.pts[1][1] + d.pts[2][1] + d.pts[3][1]) / 4;
+      return cx >= ox && cx < ox + pw && cy >= oy && cy < oy + ph;
+    }).length;
+  }
 
-  if (!raw.length) return [];
-
-  // 2. Gamma calibration: calibrated = raw ^ GAMMA, no clipping needed
-  return raw.map(d => ({ ...d, score: +Math.pow(d.score, SCORE_GAMMA).toFixed(4) }));
+  document.getElementById('patch-label').textContent =
+    `Patch ${currentPatchIdx + 1} / ${top5Patches.length}`;
+  document.getElementById('pi-m-cnt').textContent  = countInPatch(mandaraPreds);
+  document.getElementById('pi-d-cnt').textContent  = countInPatch(deimPreds);
+  document.getElementById('pi-origin').textContent = `(${ox}, ${oy})`;
+  document.getElementById('patch-prev').disabled   = (currentPatchIdx === 0);
+  document.getElementById('patch-next').disabled   = (currentPatchIdx === top5Patches.length - 1);
 }
 
-// ── Legend ────────────────────────────────────────────────────────────────────
-function buildLegend(preds) {
+function setPatchMode(mode) {
+  viewMode = mode;
+  const isP = mode === 'patch';
+  document.getElementById('mode-full').classList.toggle('active', !isP);
+  document.getElementById('mode-patch').classList.toggle('active', isP);
+  document.getElementById('patch-controls').style.display = isP ? 'flex' : 'none';
+  if (isP) {
+    currentPatchIdx = 0;
+    updatePatchNav();
+  }
+  drawBoth();
+}
+
+// ── Legend builder ────────────────────────────────────────────────────────────
+function buildLegend(legendEl, preds) {
   const seen = [...new Set(preds.map(p => p.cls))].sort();
   legendEl.innerHTML = seen.map(cls =>
     `<div class="leg-item"><div class="leg-swatch" style="background:${colorFor(cls)}"></div><span>${cls}</span></div>`
@@ -563,64 +842,102 @@ function buildLegend(preds) {
   legendEl.style.display = seen.length ? 'flex' : 'none';
 }
 
-// ── View toggle ───────────────────────────────────────────────────────────────
-document.getElementById('view-overlay').addEventListener('click', () => {
-  currentView = 'overlay';
-  document.getElementById('view-overlay').classList.add('active');
-  document.getElementById('view-original').classList.remove('active');
-  drawCanvas(lastPreds, 'overlay');
+// ── View toggles ──────────────────────────────────────────────────────────────
+function setViewM(v) {
+  viewM = v;
+  document.getElementById('mv-overlay').classList.toggle('active',  v === 'overlay');
+  document.getElementById('mv-original').classList.toggle('active', v === 'original');
+  drawBoth();
+}
+function setViewD(v) {
+  viewD = v;
+  document.getElementById('dv-overlay').classList.toggle('active',  v === 'overlay');
+  document.getElementById('dv-original').classList.toggle('active', v === 'original');
+  drawBoth();
+}
+document.getElementById('mv-overlay').addEventListener('click',  () => setViewM('overlay'));
+document.getElementById('mv-original').addEventListener('click', () => setViewM('original'));
+document.getElementById('dv-overlay').addEventListener('click',  () => setViewD('overlay'));
+document.getElementById('dv-original').addEventListener('click', () => setViewD('original'));
+
+// ── View mode toggle ──────────────────────────────────────────────────────────
+document.getElementById('mode-full').addEventListener('click',  () => setPatchMode('full'));
+document.getElementById('mode-patch').addEventListener('click', () => setPatchMode('patch'));
+
+// ── Patch navigation buttons ──────────────────────────────────────────────────
+document.getElementById('patch-prev').addEventListener('click', () => {
+  if (currentPatchIdx > 0) { currentPatchIdx--; drawBoth(); }
 });
-document.getElementById('view-original').addEventListener('click', () => {
-  currentView = 'original';
-  document.getElementById('view-original').classList.add('active');
-  document.getElementById('view-overlay').classList.remove('active');
-  drawCanvas(lastPreds, 'original');
+document.getElementById('patch-next').addEventListener('click', () => {
+  if (currentPatchIdx < top5Patches.length - 1) { currentPatchIdx++; drawBoth(); }
 });
 
-// ── Zoom controls ─────────────────────────────────────────────────────────────
+// Keyboard arrow keys navigate patches when in patch mode
+document.addEventListener('keydown', e => {
+  if (viewMode !== 'patch' || !top5Patches.length) return;
+  if (e.key === 'ArrowLeft'  && currentPatchIdx > 0) {
+    currentPatchIdx--; drawBoth();
+  } else if (e.key === 'ArrowRight' && currentPatchIdx < top5Patches.length - 1) {
+    currentPatchIdx++; drawBoth();
+  }
+});
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
 document.getElementById('zoom-in').addEventListener('click', () => {
-  if (zoomIdx < ZOOM_STEPS.length - 1) { zoomIdx++; drawCanvas(lastPreds, currentView); }
+  if (zoomIdx < ZOOM_STEPS.length - 1) { zoomIdx++; drawBoth(); }
 });
 document.getElementById('zoom-out').addEventListener('click', () => {
-  if (zoomIdx > 0) { zoomIdx--; drawCanvas(lastPreds, currentView); }
+  if (zoomIdx > 0) { zoomIdx--; drawBoth(); }
 });
-document.getElementById('zoom-fit').addEventListener('click', () => {
-  zoomIdx = 2; drawCanvas(lastPreds, currentView);  // index 2 = 1× = fit
-});
+document.getElementById('zoom-fit').addEventListener('click', () => { zoomIdx = 2; drawBoth(); });
 
-// ── Download ──────────────────────────────────────────────────────────────────
-dlBtn.addEventListener('click', () => {
-  const a = document.createElement('a');
-  a.href = canvas.toDataURL('image/png');
-  a.download = 'overlay_' + (selectedFile ? selectedFile.name : 'result.png');
-  a.click();
-});
-
-// ── Raw text toggle ───────────────────────────────────────────────────────────
-document.getElementById('toggle-raw').addEventListener('click', () => {
-  const open = predTextEl.style.display === 'block';
-  predTextEl.style.display = open ? 'none' : 'block';
-  document.getElementById('toggle-raw').textContent = open ? 'Show raw predictions' : 'Hide raw predictions';
+// Redraw when threshold slider moves
+scoreSlider.addEventListener('input', () => {
+  scoreValEl.textContent = parseFloat(scoreSlider.value).toFixed(2);
+  if (loadedImage) drawBoth();
 });
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
-canvas.addEventListener('mousemove', e => {
-  if (!lastPreds.length || currentView !== 'overlay') return;
-  const rect = canvas.getBoundingClientRect();
-  const mx = (e.clientX - rect.left) * (canvas.width  / rect.width);
-  const my = (e.clientY - rect.top)  * (canvas.height / rect.height);
-  const hit = [...lastPreds].reverse().find(p => {
-    const pts = p.pts.map(([x, y]) => [x * canvasScale, y * canvasScale]);
-    return pointInPoly(mx, my, pts);
+function attachTooltip(canvas, predsGetter, tipEl) {
+  canvas.addEventListener('mousemove', e => {
+    const preds = predsGetter();
+    if (!preds.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width  / rect.width);
+    const my = (e.clientY - rect.top)  * (canvas.height / rect.height);
+
+    let hit;
+    if (viewMode === 'patch' && top5Patches.length > 0) {
+      const [ox, oy] = top5Patches[currentPatchIdx].origin;
+      const pw = loadedImage ? Math.min(PATCH_W, loadedImage.naturalWidth  - ox) : PATCH_W;
+      const ph = loadedImage ? Math.min(PATCH_H, loadedImage.naturalHeight - oy) : PATCH_H;
+      const s  = getPatchScale(ox, oy);
+      hit = [...preds].reverse().find(p => {
+        const cx = (p.pts[0][0] + p.pts[1][0] + p.pts[2][0] + p.pts[3][0]) / 4;
+        const cy = (p.pts[0][1] + p.pts[1][1] + p.pts[2][1] + p.pts[3][1]) / 4;
+        if (cx < ox || cx >= ox + pw || cy < oy || cy >= oy + ph) return false;
+        const pts = p.pts.map(([x, y]) => [(x - ox) * s, (y - oy) * s]);
+        return pointInPoly(mx, my, pts);
+      });
+    } else {
+      hit = [...preds].reverse().find(p => {
+        const pts = p.pts.map(([x, y]) => [x * canvasScale, y * canvasScale]);
+        return pointInPoly(mx, my, pts);
+      });
+    }
+
+    if (hit) {
+      tipEl.style.display = 'block';
+      tipEl.style.left = (e.clientX + 12) + 'px';
+      tipEl.style.top  = (e.clientY - 8)  + 'px';
+      tipEl.textContent = `${hit.cls}  ${(hit.score * 100).toFixed(1)}%`;
+    } else tipEl.style.display = 'none';
   });
-  if (hit) {
-    tooltip.style.display = 'block';
-    tooltip.style.left = (e.clientX + 12) + 'px';
-    tooltip.style.top  = (e.clientY - 8)  + 'px';
-    tooltip.textContent = `${hit.cls}  ${(hit.score * 100).toFixed(1)}%`;
-  } else tooltip.style.display = 'none';
-});
-canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  canvas.addEventListener('mouseleave', () => { tipEl.style.display = 'none'; });
+}
+
+attachTooltip(canvasM, () => filterByThr(mandaraPreds, parseFloat(scoreSlider.value)), document.getElementById('tooltip-m'));
+attachTooltip(canvasD, () => filterByThr(deimPreds,    parseFloat(scoreSlider.value)), document.getElementById('tooltip-d'));
 
 function pointInPoly(px, py, pts) {
   let inside = false;
@@ -632,31 +949,87 @@ function pointInPoly(px, py, pts) {
   return inside;
 }
 
-// ── Run inference (SSE stream) ────────────────────────────────────────────────
+// ── Raw predictions toggles ───────────────────────────────────────────────────
+document.getElementById('toggle-raw-m').addEventListener('click', () => {
+  const el = document.getElementById('pred-text-m');
+  const open = el.style.display === 'block';
+  el.style.display = open ? 'none' : 'block';
+  document.getElementById('toggle-raw-m').textContent = open ? 'Show raw' : 'Hide raw';
+});
+document.getElementById('toggle-raw-d').addEventListener('click', () => {
+  const el = document.getElementById('pred-text-d');
+  const open = el.style.display === 'block';
+  el.style.display = open ? 'none' : 'block';
+  document.getElementById('toggle-raw-d').textContent = open ? 'Show raw' : 'Hide raw';
+});
+
+// ── Download buttons ──────────────────────────────────────────────────────────
+document.getElementById('dl-mandara').addEventListener('click', () => {
+  if (!mandaraRaw) return;
+  downloadTxt(mandaraRaw, mandaraResult && mandaraResult.filename || 'Mandara_model.txt');
+});
+document.getElementById('dl-deim').addEventListener('click', () => {
+  if (!deimRaw) return;
+  downloadTxt(deimRaw, deimResult && deimResult.filename || 'dino_trained_model.txt');
+});
+
+function downloadTxt(preds, filename) {
+  const lines = preds.map(d => {
+    const coords = d.pts.flat().map(v => v.toFixed(2)).join(' ');
+    return `${coords} ${d.cls} ${d.score.toFixed(4)}`;
+  });
+  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function renderPredText(elId, preds) {
+  const el = document.getElementById(elId);
+  if (!preds.length) { el.innerHTML = 'No detections above threshold.'; return; }
+  el.innerHTML = preds.map(p => {
+    const c   = p.pts.flat().map(v => v.toFixed(1)).join('  ');
+    const col = colorFor(p.cls);
+    return `<span style="color:#4a5568">${c}</span>  ` +
+           `<span style="color:${col};font-weight:600">${p.cls}</span>  ` +
+           `<span style="color:#68d391">${p.score.toFixed(4)}</span>`;
+  }).join('\n');
+}
+
+// ── Run inference (compare stream) ────────────────────────────────────────────
 runBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
 
-  // Reset UI
-  runBtn.disabled = true;
-  runBtn.innerHTML = '<span class="spinner"></span>Processing…';
+  runBtn.disabled  = true;
+  runBtn.innerHTML = '<span class="spinner"></span>Running both models…';
   errorBox.style.display = 'none';
-  canvasCard.style.display = 'none';
-  resultMeta.style.display = 'none';
+  compareCard.style.display = 'none';
   progressPanel.style.display = 'block';
   resetSteps();
 
+  // Reset patch view state
+  viewMode    = 'full';
+  top5Patches = [];
+  imgOrigins  = [];
+  document.getElementById('view-mode-bar').style.display = 'none';
+  document.getElementById('patch-controls').style.display = 'none';
+  document.getElementById('mode-full').classList.add('active');
+  document.getElementById('mode-patch').classList.remove('active');
+
   stepState('upload', 'done');
-  stepState('patch',  'active');
+  stepState('mpatch', 'active');
 
   const fd = new FormData();
   fd.append('image',     selectedFile);
   fd.append('score_thr', Math.min(parseFloat(scoreSlider.value), 0.1).toFixed(3));
-  fd.append('out_dir',   '/workspace/runpod_engine/pred');
 
-  let finalResult = null;
+  let gotMandara = false;
+  let gotDeim    = false;
 
   try {
-    const resp = await fetch('/predict/patched/stream', { method: 'POST', body: fd });
+    const resp = await fetch('/predict/compare/stream', { method: 'POST', body: fd });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
 
     const reader  = resp.body.getReader();
@@ -675,121 +1048,162 @@ runBtn.addEventListener('click', async () => {
           let ev;
           try { ev = JSON.parse(line.slice(6)); } catch { continue; }
           handleSSE(ev);
-          if (ev.type === 'done') finalResult = ev;
+          if (ev.type === 'mandara_done') { gotMandara = true; mandaraResult = ev; }
+          if (ev.type === 'deim_done')    { gotDeim    = true; deimResult    = ev; }
         }
       }
     }
   } catch (err) {
-    errorBox.textContent  = err.message;
-    errorBox.style.display = 'block';
-    runBtn.innerHTML = 'Run Inference';
-    runBtn.disabled  = false;
+    showError(err.message);
     return;
   }
 
-  if (!finalResult) {
-    errorBox.textContent  = 'Stream ended without a result.';
-    errorBox.style.display = 'block';
-    runBtn.innerHTML = 'Run Inference';
-    runBtn.disabled  = false;
+  if (!gotMandara || !gotDeim) {
+    showError('Stream ended without complete results from both models.');
+    runBtn.disabled = false;
     return;
   }
 
-  // Render results
-  // Calibrate: vehicle/smallvehicle only, gamma power scaling (score ^ 0.4)
-  const allCalibrated = parseCalibrated(finalResult.predictions);
-  lastResult  = { ...finalResult, calibrated: allCalibrated };
-  dlTxtBtn.disabled = false;
-
+  // ── Render results ──────────────────────────────────────────────────────────
   const dispThr = parseFloat(scoreSlider.value);
-  lastPreds   = allCalibrated.filter(d => d.score >= dispThr);
-  currentView = 'overlay';
-  zoomIdx     = 2;
-  document.getElementById('view-overlay').classList.add('active');
-  document.getElementById('view-original').classList.remove('active');
 
+  mandaraRaw   = parseCalibrated(mandaraResult.predictions);
+  deimRaw      = parseCalibrated(deimResult.predictions);
+  mandaraPreds = filterByThr(mandaraRaw, dispThr);
+  deimPreds    = filterByThr(deimRaw,    dispThr);
+
+  document.getElementById('dl-mandara').disabled = false;
+  document.getElementById('dl-deim').disabled    = false;
+
+  // Stats
+  const mc = countClasses(mandaraPreds);
+  const dc = countClasses(deimPreds);
+  document.getElementById('m-count').textContent   = mandaraPreds.length;
+  document.getElementById('m-vehicle').textContent = mc.vehicle;
+  document.getElementById('m-small').textContent   = mc.smallvehicle;
+  document.getElementById('m-filename').textContent = mandaraResult.filename;
+  document.getElementById('d-count').textContent   = deimPreds.length;
+  document.getElementById('d-vehicle').textContent = dc.vehicle;
+  document.getElementById('d-small').textContent   = dc.smallvehicle;
+  document.getElementById('d-filename').textContent = deimResult.filename;
+
+  // Load image then draw
   const reader2 = new FileReader();
   reader2.onload = ev => {
     const img = new Image();
     img.onload = () => {
       loadedImage = img;
-      canvasCard.style.display = 'block';
-      drawCanvas(lastPreds, 'overlay');
-      buildLegend(lastPreds);
+      zoomIdx     = 2;
+      viewM       = 'overlay'; viewD = 'overlay';
+      viewMode    = 'full';
+      document.getElementById('mv-overlay').classList.add('active');
+      document.getElementById('mv-original').classList.remove('active');
+      document.getElementById('dv-overlay').classList.add('active');
+      document.getElementById('dv-original').classList.remove('active');
+      document.getElementById('mode-full').classList.add('active');
+      document.getElementById('mode-patch').classList.remove('active');
+      document.getElementById('patch-controls').style.display = 'none';
+
+      // Compute tile origins and rank top 5 patches
+      imgOrigins  = tileOrigins(img.naturalWidth, img.naturalHeight);
+      top5Patches = rankPatches(imgOrigins);
+      currentPatchIdx = 0;
+
+      // Show view-mode bar only if there is more than one tile
+      if (imgOrigins.length > 1) {
+        document.getElementById('view-mode-bar').style.display = 'flex';
+      }
+
+      compareCard.style.display = 'block';
+      drawBoth();
+      buildLegend(document.getElementById('legend-m'), mandaraPreds);
+      buildLegend(document.getElementById('legend-d'), deimPreds);
     };
     img.src = ev.target.result;
   };
   reader2.readAsDataURL(selectedFile);
 
-  rFilename.textContent = finalResult.filename;
-  rCount.textContent    = lastPreds.length;
-  rPatches.textContent  = finalResult.n_patches;
-  rThr.textContent      = dispThr.toFixed(2);
-  resultMeta.style.display = 'block';
+  // Raw prediction text
+  renderPredText('pred-text-m', mandaraPreds);
+  renderPredText('pred-text-d', deimPreds);
 
-  predTextEl.innerHTML = lastPreds.length === 0
-    ? 'No detections above threshold.'
-    : lastPreds.map(p => {
-        const c = p.pts.flat().map(v => v.toFixed(1)).join('  ');
-        const col = colorFor(p.cls);
-        return `<span style="color:#4a5568">${c}</span>  ` +
-               `<span style="color:${col};font-weight:600">${p.cls}</span>  ` +
-               `<span style="color:#68d391">${p.score.toFixed(4)}</span>`;
-      }).join('\n');
-
-  addHistory({ ...finalResult, detections: lastPreds.length });
-  runBtn.innerHTML = 'Run Inference';
+  addHistory(mandaraResult, deimResult);
+  runBtn.innerHTML = 'Run Inference — Compare Both Models';
   runBtn.disabled  = false;
 });
 
-// ── SSE event handler ─────────────────────────────────────────────────────────
+// ── SSE handler ───────────────────────────────────────────────────────────────
 function handleSSE(ev) {
   switch (ev.type) {
-    case 'patch_start':
-      stepState('patch', 'done');
-      stepDetail('patch', `${ev.n_patches} tiles · ${ev.patch_w}×${ev.patch_h} px · ${ev.overlap} px overlap`);
-      stepLabel('patch', `Split into ${ev.n_patches} patches`);
-      stepState('infer', 'active');
+
+    case 'mandara_start':
+      stepState('mpatch', 'done');
+      stepDetail('mpatch', `${ev.n_patches} tiles · ${ev.patch_w}×${ev.patch_h} px`);
+      stepState('minfer', 'active');
       document.getElementById('pb-wrap').style.display = 'block';
       break;
 
-    case 'tile_done': {
+    case 'mandara_tile_done': {
       const pct = Math.round(ev.tile / ev.total * 100);
-      stepLabel('infer',  `Running model inference on patches`);
-      stepDetail('infer', `${ev.tile} / ${ev.total}  ·  ${pct}%`);
+      stepDetail('minfer', `${ev.tile} / ${ev.total}  ·  ${pct}%`);
       document.getElementById('prog-fill').style.width = pct + '%';
       break;
     }
-    case 'stitching':
-      stepState('infer',  'done');
-      stepLabel('infer',  'Model inference complete');
-      stepState('stitch', 'active');
+
+    case 'mandara_stitching':
+      stepState('minfer',  'done');
+      stepState('mstitch', 'active');
       break;
 
-    case 'done':
-      stepState('stitch', 'done');
+    case 'mandara_done':
+      stepState('mstitch', 'done');
+      stepState('dinfer',  'active');
+      stepDetail('dinfer', `${ev.n_patches || '?'} patches · loading model…`);
+      break;
+
+    case 'deim_start':
+      stepDetail('dinfer', `${ev.n_patches} tiles · processing all at once…`);
+      break;
+
+    case 'deim_done':
+      stepState('dinfer', 'done');
       stepState('done',   'done');
-      stepLabel('done', `Complete — ${ev.detections} detection${ev.detections !== 1 ? 's' : ''}`);
+      document.getElementById('sl-done').textContent =
+        `Complete — Mandara: ${mandaraResult ? mandaraResult.detections : '?'} · DEIMv2: ${ev.detections}`;
+      break;
+
+    case 'compare_done':
       break;
 
     case 'error':
-      errorBox.textContent  = 'Backend error: ' + ev.message;
+      errorBox.textContent   = 'Error: ' + ev.message;
       errorBox.style.display = 'block';
+      runBtn.innerHTML = 'Run Inference — Compare Both Models';
+      runBtn.disabled  = false;
       break;
   }
 }
 
 // ── History ───────────────────────────────────────────────────────────────────
 let histSeq = 0;
-function addHistory(j) {
+function addHistory(m, d) {
   histEmpty.style.display = 'none';
   histSeq++;
   const item = document.createElement('div');
   item.className = 'hist-item';
   item.innerHTML = `
-    <span class="hist-seq">#${String(histSeq).padStart(3,'0')}</span>
-    <span class="hist-fname">${j.filename}</span>
-    <span class="hist-cnt">${j.detections} det</span>`;
+    <div class="hist-row">
+      <span class="hist-seq">#${String(histSeq).padStart(3,'0')}</span>
+      <span class="hist-model tag-mandara step-tag" style="font-size:.62rem">Mandara</span>
+      <span class="hist-fname">${m.filename}</span>
+      <span class="hist-cnt">${m.detections} det</span>
+    </div>
+    <div class="hist-row" style="margin-top:4px">
+      <span class="hist-seq"></span>
+      <span class="hist-model tag-deim step-tag" style="font-size:.62rem">DEIMv2</span>
+      <span class="hist-fname">${d.filename}</span>
+      <span class="hist-cnt">${d.detections} det</span>
+    </div>`;
   historyList.insertBefore(item, histEmpty);
 }
 
@@ -798,25 +1212,19 @@ async function fetchSamples() {
   const grid = document.getElementById('sample-grid');
   try {
     const samples = await fetch('/samples').then(r => r.json());
-    if (!samples.length) {
-      grid.innerHTML = '<span style="color:#4a5568;font-size:0.8rem">No samples found.</span>';
-      return;
-    }
-    let sampleCount = 0;
+    if (!samples.length) { grid.innerHTML = '<span style="color:#4a5568;font-size:0.8rem">No samples found.</span>'; return; }
+    let n = 0;
     grid.innerHTML = samples.map(s => {
       const isDota = s.filename.toLowerCase().startsWith('dota');
-      const label  = isDota ? 'DOTA Sample' : `Sample ${++sampleCount}`;
-      return `
-      <div class="sample-tile" onclick="loadSample('${s.url}','${s.filename}')">
+      const label  = isDota ? 'DOTA Sample' : `Sample ${++n}`;
+      return `<div class="sample-tile" onclick="loadSample('${s.url}','${s.filename}')">
         <div class="s-icon">🛰️</div>
         <div class="s-label">${label}</div>
         <div class="s-fname" title="${s.filename}">${s.filename}</div>
         <div class="sample-load-btn">Load image</div>
       </div>`;
     }).join('');
-  } catch(e) {
-    grid.innerHTML = '<span style="color:#4a5568;font-size:0.8rem">Could not load samples.</span>';
-  }
+  } catch { grid.innerHTML = '<span style="color:#4a5568;font-size:0.8rem">Could not load samples.</span>'; }
 }
 
 async function loadSample(url, filename) {
@@ -824,32 +1232,12 @@ async function loadSample(url, filename) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const blob = await resp.blob();
-    const file = new File([blob], filename, { type: blob.type || 'image/png' });
-    setFile(file);
+    setFile(new File([blob], filename, { type: blob.type || 'image/png' }));
     document.getElementById('drop-zone').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  } catch(e) {
-    alert('Could not load sample image: ' + e.message);
-  }
+  } catch(e) { alert('Could not load sample: ' + e.message); }
 }
 
 fetchSamples();
-
-// ── Download predictions (.txt) ───────────────────────────────────────────────
-// Exports vehicle / smallvehicle only (all detections ≥ 0.1, calibrated scores).
-// Class labels other than vehicle/smallvehicle are never written to the file.
-dlTxtBtn.addEventListener('click', () => {
-  if (!lastResult || !lastResult.calibrated || !lastResult.calibrated.length) return;
-  const lines = lastResult.calibrated.map(d => {
-    const coords = d.pts.flat().map(v => v.toFixed(2)).join(' ');
-    return `${coords} ${d.cls} ${d.score.toFixed(4)}`;
-  });
-  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  a.download = lastResult.filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-});
 </script>
 </body>
 </html>

@@ -53,15 +53,14 @@ def _validate_upload(image: UploadFile, content: bytes) -> None:
 
 
 def _next_seq(out_dir: str) -> int:
-    """Return next sequential index based on existing pred_NNNN_*.txt files."""
-    existing = glob.glob(os.path.join(out_dir, "pred_*.txt"))
-    if not existing:
-        return 1
+    """Return next sequential index across all output txt naming patterns."""
+    patterns = ["pred_*.txt", "Mandara_model_*.txt", "dino_trained_model_*.txt"]
     nums = []
-    for f in existing:
-        m = re.match(r"pred_(\d+)_", os.path.basename(f))
-        if m:
-            nums.append(int(m.group(1)))
+    for pat in patterns:
+        for f in glob.glob(os.path.join(out_dir, pat)):
+            m = re.search(r'(\d{4})_', os.path.basename(f))
+            if m:
+                nums.append(int(m.group(1)))
     return max(nums) + 1 if nums else 1
 
 
@@ -319,6 +318,117 @@ def predict_batch(req: BatchRequest):
 
     saved = len([f for f in os.listdir(req.out_dir) if f.endswith(".txt")])
     return {"status": "done", "out_dir": req.out_dir, "files_saved": saved}
+
+
+@app.post("/predict/compare/stream")
+async def predict_compare_stream(
+    image: UploadFile = File(...),
+    score_thr: float = Form(0.05),
+    out_dir: str = Form(PRED_DIR),
+):
+    """SSE stream: run both Mandara and DEIMv2 on the same image.
+
+    Yields JSON events:
+      mandara_start   — Mandara tiling begins
+      mandara_tile_done — one tile finished (tile, total)
+      mandara_stitching — all tiles done
+      mandara_done    — Mandara complete (predictions, filename, detections)
+      deim_start      — DEIMv2 batch inference begins (n_patches)
+      deim_done       — DEIMv2 complete (predictions, filename, detections)
+      compare_done    — both models finished
+      error           — something went wrong (message)
+    """
+    if not _model_ready:
+        raise HTTPException(503, "Mandara model not loaded yet")
+
+    content = await image.read()
+    _validate_upload(image, content)
+
+    suffix = os.path.splitext(image.filename)[-1] or ".png"
+    stem   = re.sub(r"[^\w\-]", "_",
+                    os.path.splitext(image.filename)[0] if image.filename else "image")
+
+    async def generate():
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        try:
+            with open(tmp_path, 'wb') as f:
+                f.write(content)
+
+            os.makedirs(out_dir, exist_ok=True)
+            seq = _next_seq(out_dir)
+
+            # ── Phase 1: Mandara (OrientedFormer) ────────────────────────────
+            from patcher import patch_and_predict_stream
+
+            mandara_preds = None
+            async for event in patch_and_predict_stream(tmp_path, score_thr):
+                if event['type'] == 'patch_start':
+                    event['model'] = 'mandara'
+                    yield f"data: {json.dumps({'type': 'mandara_start', **{k: v for k, v in event.items() if k != 'type'}})}\n\n"
+
+                elif event['type'] == 'tile_done':
+                    yield f"data: {json.dumps({'type': 'mandara_tile_done', 'tile': event['tile'], 'total': event['total']})}\n\n"
+
+                elif event['type'] == 'stitching':
+                    yield f"data: {json.dumps({'type': 'mandara_stitching'})}\n\n"
+
+                elif event['type'] == 'done':
+                    stitched = event.pop('stitched')
+                    mandara_file = f"Mandara_model_{seq:04d}_{stem}.txt"
+                    with open(os.path.join(out_dir, mandara_file), 'w') as f:
+                        f.write(stitched)
+                    det_count = len([l for l in stitched.splitlines() if l.strip()])
+                    mandara_preds = stitched
+                    yield f"data: {json.dumps({'type': 'mandara_done', 'predictions': stitched, 'filename': mandara_file, 'detections': det_count, 'n_patches': event['n_patches'], 'img_w': event['img_w'], 'img_h': event['img_h']})}\n\n"
+
+                elif event['type'] == 'error':
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Mandara: ' + event.get('message', '')})}\n\n"
+                    return
+
+            # ── Phase 2: DEIMv2 ───────────────────────────────────────────────
+            import asyncio
+            from deim_inference import predict_deim_patched, is_available, PATCH_W, PATCH_H, OVERLAP
+            from patcher import _tile_origins
+
+            if not is_available():
+                yield f"data: {json.dumps({'type': 'error', 'message': 'DEIMv2 model not available on this server. Check /sfs/envs/deimv2 and /sfs/DEIMv2.'})}\n\n"
+                return
+
+            # Compute patch count for the progress display
+            from PIL import Image as _PILImage
+            _img = _PILImage.open(tmp_path)
+            _iw, _ih = _img.size
+            _origins = _tile_origins(_iw, _ih)
+            yield f"data: {json.dumps({'type': 'deim_start', 'n_patches': len(_origins), 'patch_w': PATCH_W, 'patch_h': PATCH_H, 'overlap': OVERLAP})}\n\n"
+
+            loop = asyncio.get_running_loop()
+            deim_stitched, _, _ = await loop.run_in_executor(
+                None, predict_deim_patched, tmp_path, score_thr
+            )
+
+            deim_file = f"dino_trained_model_{seq:04d}_{stem}.txt"
+            with open(os.path.join(out_dir, deim_file), 'w') as f:
+                f.write(deim_stitched)
+            deim_count = len([l for l in deim_stitched.splitlines() if l.strip()])
+            yield f"data: {json.dumps({'type': 'deim_done', 'predictions': deim_stitched, 'filename': deim_file, 'detections': deim_count})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'compare_done', 'seq': seq})}\n\n"
+
+        except Exception as exc:
+            import traceback
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 if __name__ == "__main__":
