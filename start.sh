@@ -34,10 +34,14 @@ echo "==> Using conda at: $CONDA_BASE"
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 
 # ── 2. Activate env ───────────────────────────────────────────────────────────
-ENV_NAME="$(grep '^name:' "$PROJ/environment.yml" 2>/dev/null | awk '{print $2}')"
-ENV_NAME="${ENV_NAME:-ai4rs_infer}"
+AI4RS_ENV="/workspace/envs/ai4rs_infer"
 
-conda activate "$ENV_NAME"
+if [ ! -d "$AI4RS_ENV" ]; then
+    echo "ERROR: env not found at $AI4RS_ENV — run:  bash $PROJ/setup.sh"
+    exit 1
+fi
+
+conda activate "$AI4RS_ENV"
 
 # ── 3. Start inference server ─────────────────────────────────────────────────
 export PYTHONPATH="$PROJ:$PYTHONPATH"

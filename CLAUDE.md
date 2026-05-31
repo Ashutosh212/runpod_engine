@@ -70,14 +70,13 @@ runpod_engine/
 - **Used for**: subprocess-isolated DEIMv2 inference (incompatible torch/Python versions with ai4rs_infer)
 - **Does NOT need pip install**: the `engine/` module is loaded via `sys.path.insert(0, deim_src/)`
 
-### Backup environments (if recreation fails)
+### Conda env locations (persistent on RunPod)
+Both envs are created under `/workspace/envs/` so they survive pod resets:
 ```
-/sfs/env_backups/ai4rs_infer/     # Full clone, directly activatable
-/sfs/env_backups/deimv2/          # Full clone, directly activatable
-/sfs/env_backups/ai4rs_infer_spec.yml   # Exact package list for diffing
-/sfs/env_backups/deimv2_spec.yml        # Exact package list for diffing
+/workspace/envs/ai4rs_infer/   # Mandara env
+/workspace/envs/deimv2/        # DEIMv2 env
 ```
-To diff a freshly built env: `conda env export -n ai4rs_infer | diff - /sfs/env_backups/ai4rs_infer_spec.yml`
+`setup.sh` uses `--prefix /workspace/envs/...` instead of named envs. `start.sh` activates by path. Re-run `setup.sh` only if `/workspace/envs/` is wiped or on a brand-new pod.
 
 ---
 
@@ -97,7 +96,7 @@ bash start.sh
 
 ### What `setup.sh` does (in order):
 1. Auto-detects conda (checks PATH, common install locations); installs Miniconda if missing
-2. Creates `ai4rs_infer` env from `environment.yml`
+2. Creates env at `/workspace/envs/ai4rs_infer` from `environment.yml`
 3. Detects CUDA version → picks correct torch/mmcv index URL
 4. Installs torch 2.4.0 + torchvision
 5. Installs mmengine via mim; installs mmcv **via pip directly** (not mim — mim generates wrong URL)
@@ -106,10 +105,10 @@ bash start.sh
 8. Clones mmrotate 1.x to `$(dirname $PROJ)/mmrotate_runpod`; installs with `--no-deps`
 9. Creates `projects/__init__.py` and `projects/OrientedFormer/__init__.py`
 10. Installs FastAPI, uvicorn, pydantic, pillow, numpy, python-multipart
-11. Creates `deimv2` env (Python 3.11) + installs torch + scipy/pyyaml/pillow/numpy
+11. Creates env at `/workspace/envs/deimv2` (Python 3.11) + installs torch + scipy/pyyaml/pillow/numpy
 
 ### What `start.sh` does:
-- Sources conda, activates `ai4rs_infer`
+- Sources conda, activates `/workspace/envs/ai4rs_infer`
 - Sets `PYTHONPATH` to include the project root
 - Starts uvicorn on port 8000
 - Mandara model loads on startup (`inference.py:load_model()`)
@@ -183,12 +182,13 @@ error               → message  (on any failure)
 
 - **Side-by-side canvases**: Mandara left, DEIMv2 right
 - **Overlay / Original toggle** per panel
-- **Score threshold slider**: redraws both canvases live
+- **Score threshold slider**: default 0.5; redraws both canvases live and re-ranks patch view
 - **Shared zoom**: 0.5× to 4× applies to both canvases
 - **Tooltip**: hover over a box to see class + confidence
 - **Full Image / Patch View · Top 10** toggle:
-  - Ranks all tiles by sum of Mandara calibrated scores
-  - Shows the 10 highest-density tiles
+  - Ranks tiles by sum of Mandara scores **at the current display threshold** (re-ranks live as slider moves)
+  - Only tiles with at least one visible detection are included; empty/black tiles are excluded
+  - Shows up to 10 highest-density tiles
   - Navigate with `[←] [→]` buttons or keyboard arrow keys
   - Both canvases show the same tile simultaneously
 - **Download .txt**: downloads the prediction file client-side
@@ -233,7 +233,7 @@ x1 y1 x2 y2 x3 y3 x4 y4 class score
 
 5. **DEIMv2 helper stdout must be silenced** — model prints debug lines to stdout before JSON. `deim_infer_helper.py` does `sys.stdout = sys.stderr` before any model import, restores only for the final `print(json.dumps(...))`.
 
-6. **DEIMv2 Python interpreter detection** — `deim_inference.py:_find_deimv2_python()` first checks a static list of common conda env paths, then falls back to `conda run -n deimv2 which python3` so it works on any server regardless of conda install location.
+6. **DEIMv2 Python interpreter detection** — `deim_inference.py:_find_deimv2_python()` first checks a static list of common conda env paths (including `/workspace/envs/deimv2/bin/python3`), then falls back to `conda run -n deimv2 which python3`. The static path hits immediately on RunPod since envs live in `/workspace/envs/`.
 
 7. **Checkpoints are .gitignored** — `checkpoints/epoch_9.pth` (540 MB) and `checkpoints/deim/best_stg1.pth` (150 MB) must be copied manually to a new server. Code and configs travel via git; models do not.
 

@@ -1,7 +1,6 @@
 name: ai4rs_infer
 channels:
   - conda-forge
-  - defaults
 dependencies:
   - python=3.10
   - pip

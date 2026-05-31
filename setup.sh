@@ -46,18 +46,19 @@ echo "==> Using conda at: $CONDA_BASE"
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 
 # ── 2. Create / update conda env ─────────────────────────────────────────────
-ENV_NAME="$(grep '^name:' "$PROJ/environment.yml" | awk '{print $2}')"
-ENV_NAME="${ENV_NAME:-ai4rs_infer}"
+# Stored under /workspace so envs survive pod resets
+AI4RS_ENV="/workspace/envs/ai4rs_infer"
+mkdir -p /workspace/envs
 
-if conda env list | grep -q "^$ENV_NAME "; then
-    echo "==> Updating existing env: $ENV_NAME"
-    conda env update -f "$PROJ/environment.yml" --prune
+if [ -d "$AI4RS_ENV" ]; then
+    echo "==> Updating existing env: $AI4RS_ENV"
+    conda env update --prefix "$AI4RS_ENV" -f "$PROJ/environment.yml" --prune
 else
-    echo "==> Creating env: $ENV_NAME"
-    conda env create -f "$PROJ/environment.yml"
+    echo "==> Creating env: $AI4RS_ENV"
+    conda env create -f "$PROJ/environment.yml" --prefix "$AI4RS_ENV"
 fi
 
-conda activate "$ENV_NAME"
+conda activate "$AI4RS_ENV"
 
 # ── 3. Detect CUDA and install torch ─────────────────────────────────────────
 CUDA_MAJOR=""
@@ -204,12 +205,14 @@ else
     echo "==> DEIMv2 source: $DEIMV2_SRC"
     echo "==> DEIMv2 checkpoint: $DEIMV2_CKPT"
 
-    if conda env list | grep -q "^deimv2 "; then
-        echo "==> DEIMv2 conda env already exists"
+    DEIMV2_ENV="/workspace/envs/deimv2"
+
+    if [ -d "$DEIMV2_ENV" ]; then
+        echo "==> DEIMv2 conda env already exists at $DEIMV2_ENV"
     else
-        echo "==> Creating DEIMv2 conda env (Python 3.11)"
-        conda create -n deimv2 python=3.11 -y
-        conda run -n deimv2 pip install setuptools wheel
+        echo "==> Creating DEIMv2 conda env (Python 3.11) at $DEIMV2_ENV"
+        conda create --prefix "$DEIMV2_ENV" python=3.11 -y
+        conda run --prefix "$DEIMV2_ENV" pip install setuptools wheel
 
         if [ "${CUDA_MAJOR}" = "12" ]; then
             DEIM_TORCH_INDEX="https://download.pytorch.org/whl/cu124"
@@ -219,10 +222,10 @@ else
             DEIM_TORCH_INDEX="https://download.pytorch.org/whl/cpu"
         fi
 
-        conda run -n deimv2 pip install torch torchvision --index-url "$DEIM_TORCH_INDEX"
+        conda run --prefix "$DEIMV2_ENV" pip install torch torchvision --index-url "$DEIM_TORCH_INDEX"
         # Install all DEIMv2 runtime deps from bundled requirements.txt
         # (excludes torch/torchvision which are already installed above)
-        conda run -n deimv2 pip install \
+        conda run --prefix "$DEIMV2_ENV" pip install \
             pyyaml pillow numpy scipy tensorboard \
             faster-coco-eval calflops transformers
     fi

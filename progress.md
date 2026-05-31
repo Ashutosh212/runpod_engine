@@ -111,7 +111,32 @@ These files must exist even if empty.
 
 ---
 
-## Fix 8 — mmrotate cloned to `/tmp` (lost on pod reset)
+## Fix 8 — Anaconda `defaults` channel requires Terms of Service acceptance
+
+**Symptom:** `setup.sh` exits immediately after installing Miniconda with:
+```
+CondaToSNonInteractiveError: Terms of Service have not been accepted for the following channels:
+    - https://repo.anaconda.com/pkgs/main
+    - https://repo.anaconda.com/pkgs/r
+```
+
+**Root cause:** Anaconda's `defaults` channel (`pkgs/main`, `pkgs/r`) now requires ToS
+acceptance. `environment.yml` listed `defaults` as a channel, triggering this on fresh
+Miniconda installs.
+
+**Fix — one-time accept (if using existing Miniconda install):**
+```bash
+/workspace/miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+/workspace/miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+```
+Then re-run `bash setup.sh`.
+
+**Permanent fix:** Removed `- defaults` from `environment.yml` channels list. Everything
+needed (`python=3.10`, `pip`, `setuptools`) is available on `conda-forge` — no ToS required.
+
+---
+
+## Fix 9 — mmrotate cloned to `/tmp` (lost on pod reset)
 
 **Root cause:** `/tmp` is ephemeral — wiped on every pod restart. Cloning mmrotate there
 meant re-cloning on every boot.
@@ -417,6 +442,13 @@ conda activate /sfs/env_backups/ai4rs_infer
 2. `checkpoints/deim/best_stg1.pth` exists — 150 MB
 3. `deim_src/engine/` exists — 1.3 MB
 4. `configs/deim/deimv2_dinov3_s_vehicle.yml` exists
-5. Run `bash setup.sh` (first time only, or after deleting envs)
+5. Run `bash setup.sh` (first time only, or after deleting `/workspace/envs/`)
+   - Envs are created at `/workspace/envs/ai4rs_infer` and `/workspace/envs/deimv2`
+   - If Miniconda was just installed and ToS error appears, run:
+     ```
+     /workspace/miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+     /workspace/miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+     ```
+     then re-run `bash setup.sh`
 6. Run `bash start.sh`
 7. Check `curl http://localhost:8000/health` returns `{"model_ready":true}`

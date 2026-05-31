@@ -310,8 +310,8 @@ canvas { display: block; cursor: crosshair; }
   </div>
   <div class="score-row">
     <label>Score threshold</label>
-    <input type="range" id="score-slider" min="0" max="1" step="0.01" value="0.3">
-    <span class="score-val" id="score-val">0.30</span>
+    <input type="range" id="score-slider" min="0" max="1" step="0.01" value="0.5">
+    <span class="score-val" id="score-val">0.50</span>
   </div>
   <button id="run-btn" disabled>Run Inference — Compare Both Models</button>
 
@@ -552,6 +552,7 @@ async function checkHealth() {
 checkHealth();
 
 // ── Slider ────────────────────────────────────────────────────────────────────
+scoreValEl.textContent = parseFloat(scoreSlider.value).toFixed(2); // sync on load
 scoreSlider.addEventListener('input', () => {
   scoreValEl.textContent = parseFloat(scoreSlider.value).toFixed(2);
 });
@@ -661,10 +662,11 @@ function tileOrigins(imgW, imgH) {
   return out;
 }
 
-// Rank tiles by sum of Mandara raw scores (stable — not affected by display threshold).
-// Returns top 5.
+// Rank tiles by sum of scores at the current display threshold.
+// Only tiles with at least one visible detection are included.
 function rankPatches(origins) {
-  const raw = mandaraRaw || [];
+  const thr = parseFloat(scoreSlider.value);
+  const raw = filterByThr(mandaraRaw || [], thr);
   const scored = origins.map((origin, idx) => {
     const [ox, oy] = origin;
     const pw = Math.min(PATCH_W, loadedImage ? loadedImage.naturalWidth  - ox : PATCH_W);
@@ -681,7 +683,7 @@ function rankPatches(origins) {
       totalScore: inTile.reduce((s, d) => s + d.score, 0),
     };
   }).sort((a, b) => b.totalScore - a.totalScore);
-  return scored.slice(0, 10);
+  return scored.filter(t => t.count > 0).slice(0, 10);
 }
 
 // Compute patch draw scale for a given origin.
@@ -891,10 +893,16 @@ document.getElementById('zoom-out').addEventListener('click', () => {
 });
 document.getElementById('zoom-fit').addEventListener('click', () => { zoomIdx = 2; drawBoth(); });
 
-// Redraw when threshold slider moves
+// Redraw when threshold slider moves — also re-rank patches so list stays in sync
 scoreSlider.addEventListener('input', () => {
   scoreValEl.textContent = parseFloat(scoreSlider.value).toFixed(2);
-  if (loadedImage) drawBoth();
+  if (loadedImage) {
+    if (imgOrigins.length) {
+      top5Patches = rankPatches(imgOrigins);
+      currentPatchIdx = Math.min(currentPatchIdx, Math.max(0, top5Patches.length - 1));
+    }
+    drawBoth();
+  }
 });
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
